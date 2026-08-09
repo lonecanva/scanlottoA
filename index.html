@@ -103,8 +103,10 @@
   'use strict';
 
   let tickets = [];
+  let backendReady = false;
+  const REQUIRED_BACKEND_VERSION = '2.1.0';
   const MAX_FILES = 200;
-  const SCAN_CONCURRENCY = 3;
+  const SCAN_CONCURRENCY = 2;
 
   const fileInput = document.getElementById('file-input');
   const dropZone = document.getElementById('drop-zone');
@@ -166,10 +168,16 @@
       apiStatus.textContent = 'Testing...';
       localStorage.setItem('lotteryWebAppUrl', apiUrl());
       const res = await postApi({ action: 'ping' });
-      apiStatus.textContent = '✅ Connected';
+      if (res.backendVersion !== REQUIRED_BACKEND_VERSION) {
+        backendReady = false;
+        throw new Error('Old Apps Script deployment detected. Redeploy Code.gs as NEW VERSION. Expected backend ' + REQUIRED_BACKEND_VERSION + ', got ' + (res.backendVersion || 'unknown'));
+      }
+      backendReady = true;
+      apiStatus.textContent = '✅ Connected v' + res.backendVersion;
       apiStatus.className = 'text-xs text-emerald-600 font-semibold';
-      log(res.message || 'Apps Script connected', 'success');
+      log((res.message || 'Apps Script connected') + ' Backend v' + res.backendVersion, 'success');
     } catch (e) {
+      backendReady = false;
       apiStatus.textContent = '❌ ' + e.message;
       apiStatus.className = 'text-xs text-rose-600 font-semibold';
       log('Connection failed: ' + e.message, 'error');
@@ -263,6 +271,11 @@
   }
 
   scanAllBtn.addEventListener('click', async () => {
+    if (!backendReady) {
+      log('Please open Settings and click Test Connection first. If it says Old Apps Script deployment, redeploy Code.gs as a New Version.', 'error');
+      settingsContent.classList.add('open');
+      return;
+    }
     const pending = tickets.filter(t => t.scanStatus === 'pending' || t.scanStatus === 'error');
     scanAllBtn.disabled = true;
     document.getElementById('scan-btn-text').textContent = 'Processing...';
@@ -275,7 +288,9 @@
         log(`Extracted: ${res.formattedString}`, 'success');
       } catch (e) {
         t.scanStatus = 'error';
-        log(`Scan Error (${t.fileName}): ${e.message}`, 'error');
+        const msg = String(e && e.message ? e.message : e);
+        if (msg.includes('toString') || msg.includes('Lottery number missing')) backendReady = false;
+        log(`Scan Error (${t.fileName}): ${msg}`, 'error');
       }
       updateUI();
     }, SCAN_CONCURRENCY);

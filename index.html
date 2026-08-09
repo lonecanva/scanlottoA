@@ -1,203 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>Fast Bulk Lottery Scanner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#f8fafc; }
+    .spinner { border:3px solid rgba(255,255,255,.3); border-radius:50%; border-top-color:currentColor; width:18px; height:18px; animation:spin 1s ease-in-out infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .custom-scrollbar::-webkit-scrollbar { width:6px; height:6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background:#f1f1f1; border-radius:4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
+    .status-badge { backdrop-filter:blur(4px); background-color:rgba(255,255,255,.9); }
+    .btn-soft-blue { background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; }
+    .btn-active-blue { background:#2563eb; color:#fff; border:1px solid #1d4ed8; }
+    .btn-soft-emerald { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+    .btn-active-emerald { background:#059669; color:#fff; border:1px solid #047857; }
+    #settings-content { transition:max-height .3s ease-out,opacity .3s ease-out; max-height:0; opacity:0; overflow:hidden; }
+    #settings-content.open { max-height:260px; opacity:1; }
+  </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 text-slate-800">
+  <div class="max-w-5xl mx-auto space-y-6">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 mb-1">⚡ Fast Bulk Lottery Scanner</h1>
+        <p class="text-sm text-slate-500">Extracting: YY-Period-Set-Number-Suffix</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="toggle-settings" class="text-sm px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium flex items-center gap-2">⚙ Settings</button>
+        <button id="clear-btn" class="text-sm px-4 py-2 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-100 rounded-lg font-medium">Reset</button>
+      </div>
+    </div>
 
-syncAllBtn.addEventListener('click', async () => {
+    <div id="settings-content" class="bg-blue-50/50 rounded-2xl border border-blue-100">
+      <div class="p-4 space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-blue-800 uppercase tracking-wide">Google Apps Script Web App URL</label>
+          <input type="text" id="webapp-url" value="https://script.google.com/macros/s/AKfycbzoCETxbfjf0UFo-urOI8c-a9rEqugqwFUn5pD-zCiZ0hglIAWccSfvs8SvLM-75XbCeg/exec" class="mt-1 w-full px-3 py-2 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="test-api-btn" class="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700">Test Connection</button>
+          <span id="api-status" class="text-xs text-slate-500">Not tested</span>
+        </div>
+        <p class="text-[11px] text-blue-700">GitHub and Gemini keys stay in Apps Script Script Properties. They are not stored on this GitHub page.</p>
+      </div>
+    </div>
 
-    const baseUrl =
-        webAppUrlInput.value.trim();
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div class="lg:col-span-7 space-y-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+          <div id="drop-zone" class="w-full h-36 border-2 border-dashed border-blue-300 rounded-xl bg-blue-50/50 hover:bg-blue-50 transition-colors flex flex-col items-center justify-center cursor-pointer relative overflow-hidden">
+            <input type="file" id="file-input" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+            <div class="text-center pointer-events-none px-4">
+              <div class="text-3xl mb-2">📷</div>
+              <p class="text-sm font-medium text-blue-700">Drop Images Here or Click</p>
+              <p class="text-[11px] text-blue-500 mt-1">Up to 200 images</p>
+            </div>
+          </div>
+          <button id="scan-all-btn" class="mt-4 w-full font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm btn-soft-blue" disabled>
+            <span id="scan-btn-text">Fast Scan All Pending</span>
+          </button>
+        </div>
 
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 min-h-[250px]">
+          <div class="flex justify-between items-end mb-4 border-b border-slate-100 pb-2">
+            <h2 class="text-base font-semibold text-slate-800">Queue</h2>
+            <span id="queue-counter" class="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-md">0 Items</span>
+          </div>
+          <div id="gallery-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-1"></div>
+        </div>
+      </div>
 
-    if (!baseUrl) {
+      <div class="lg:col-span-5 flex flex-col gap-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-[525px]">
+          <h2 class="text-base font-semibold text-slate-800 mb-4 border-b border-slate-100 pb-2 flex justify-between items-center">
+            <span>Extracted Results</span>
+            <span id="results-counter" class="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-md">0 Total</span>
+          </h2>
+          <div id="results-list" class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2 mb-4"></div>
+          <div class="pt-4 border-t border-slate-100">
+            <button id="sync-all-btn" class="w-full font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm btn-soft-emerald" disabled>
+              <span id="sync-btn-text">Sync to Sheet + GitHub</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
-        log(
-            "Missing Web App URL",
-            "error"
-        );
+    <div class="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 p-4 text-slate-300 font-mono text-xs md:text-sm">
+      <div id="logs" class="h-40 overflow-y-auto custom-scrollbar space-y-1 pb-2 scroll-smooth">
+        <div class="text-slate-500">[System] Scanner ready.</div>
+      </div>
+    </div>
+  </div>
 
-        return;
+<script>
+(() => {
+  'use strict';
 
+  let tickets = [];
+  const MAX_FILES = 200;
+  const SCAN_CONCURRENCY = 3;
+
+  const fileInput = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+  const galleryGrid = document.getElementById('gallery-grid');
+  const resultsList = document.getElementById('results-list');
+  const queueCounter = document.getElementById('queue-counter');
+  const resultsCounter = document.getElementById('results-counter');
+  const scanAllBtn = document.getElementById('scan-all-btn');
+  const syncAllBtn = document.getElementById('sync-all-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const logsEl = document.getElementById('logs');
+  const webAppUrlInput = document.getElementById('webapp-url');
+  const toggleSettingsBtn = document.getElementById('toggle-settings');
+  const settingsContent = document.getElementById('settings-content');
+  const testApiBtn = document.getElementById('test-api-btn');
+  const apiStatus = document.getElementById('api-status');
+
+  const savedUrl = localStorage.getItem('lotteryWebAppUrl');
+  if (savedUrl) webAppUrlInput.value = savedUrl;
+
+  toggleSettingsBtn.addEventListener('click', () => settingsContent.classList.toggle('open'));
+  webAppUrlInput.addEventListener('change', () => localStorage.setItem('lotteryWebAppUrl', webAppUrlInput.value.trim()));
+
+  function log(message, type = 'info') {
+    const time = new Date().toLocaleTimeString();
+    const color = type === 'success' ? 'text-emerald-400' : type === 'error' ? 'text-rose-400' : type === 'action' ? 'text-blue-400' : 'text-slate-300';
+    logsEl.insertAdjacentHTML('beforeend', `<div class="${color} break-all">[${time}] ${escapeHtml(message)}</div>`);
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  }
+
+  function apiUrl() {
+    const url = webAppUrlInput.value.trim();
+    if (!url) throw new Error('Missing Web App URL');
+    return url;
+  }
+
+  async function postApi(payload) {
+    const response = await fetch(apiUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (_) { throw new Error('Apps Script returned invalid JSON: ' + text.slice(0, 160)); }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (data.status !== 'success') throw new Error(data.message || 'Server error');
+    return data;
+  }
+
+  testApiBtn.addEventListener('click', async () => {
+    try {
+      apiStatus.textContent = 'Testing...';
+      localStorage.setItem('lotteryWebAppUrl', apiUrl());
+      const res = await postApi({ action: 'ping' });
+      apiStatus.textContent = '✅ Connected';
+      apiStatus.className = 'text-xs text-emerald-600 font-semibold';
+      log(res.message || 'Apps Script connected', 'success');
+    } catch (e) {
+      apiStatus.textContent = '❌ ' + e.message;
+      apiStatus.className = 'text-xs text-rose-600 font-semibold';
+      log('Connection failed: ' + e.message, 'error');
     }
+  });
 
+  ['dragenter','dragover','dragleave','drop'].forEach(name => dropZone.addEventListener(name, e => { e.preventDefault(); e.stopPropagation(); }));
+  dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+  fileInput.addEventListener('change', e => { handleFiles(e.target.files); fileInput.value = ''; });
 
-    localStorage.setItem(
-        'lotteryWebAppUrl',
-        baseUrl
-    );
+  function resizeAndCompressImage(file, maxWidth = 800) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read image'));
+      reader.onload = e => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Invalid image'));
+        img.onload = () => {
+          let width = img.width, height = img.height;
+          if (width > maxWidth) { height = Math.round(height * maxWidth / width); width = maxWidth; }
+          const canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.78));
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
-
-    const pending =
-        tickets.filter(
-            t =>
-                t.scanStatus === 'success' &&
-                t.syncStatus !== 'success'
-        );
-
-
-    if (!pending.length) {
-
-        log(
-            "Nothing waiting to sync.",
-            "action"
-        );
-
-        return;
-
+  async function handleFiles(filesList) {
+    const files = Array.from(filesList).slice(0, Math.max(0, MAX_FILES - tickets.length));
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      try {
+        const previewUrl = await resizeAndCompressImage(file);
+        tickets.push({
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()),
+          fileName: file.name,
+          mimeType: 'image/jpeg',
+          base64: previewUrl.split(',')[1],
+          previewUrl,
+          scanStatus: 'pending',
+          syncStatus: 'pending',
+          extractedData: null,
+          imageUrl: ''
+        });
+      } catch (e) { log(`${file.name}: ${e.message}`, 'error'); }
     }
-
-
-    syncAllBtn.disabled = true;
-
-
-    document
-        .getElementById(
-            'sync-btn-text'
-        )
-        .textContent =
-        "Syncing...";
-
-
-    // ----------------------------------
-    // Upload ONE BY ONE
-    // ----------------------------------
-
-    for (const t of pending) {
-
-        t.syncStatus =
-            'syncing';
-
-        updateUI();
-
-
-        try {
-
-            log(
-                `Uploading ${t.extractedData.number}...`,
-                'action'
-            );
-
-
-            const response =
-                await fetch(
-                    baseUrl,
-                    {
-
-                        method: 'POST',
-
-                        headers: {
-
-                            'Content-Type':
-                                'text/plain;charset=utf-8'
-
-                        },
-
-                        body:
-                            JSON.stringify({
-
-                                base64:
-                                    t.base64,
-
-                                filename:
-                                    t.extractedData.number,
-
-                                formattedString:
-                                    t.extractedData.formattedString
-
-                            })
-
-                    }
-                );
-
-
-            const text =
-                await response.text();
-
-
-            let res;
-
-
-            try {
-
-                res =
-                    JSON.parse(text);
-
-            } catch (error) {
-
-                throw new Error(
-                    'Invalid response: ' +
-                    text.substring(
-                        0,
-                        200
-                    )
-                );
-
-            }
-
-
-            if (
-                res.status ===
-                'success'
-            ) {
-
-                t.syncStatus =
-                    'success';
-
-
-                t.imageUrl =
-                    res.imageUrl ||
-                    '';
-
-
-                log(
-                    `✓ Synced: ${t.extractedData.formattedString}`,
-                    'success'
-                );
-
-
-                if (res.imageUrl) {
-
-                    log(
-                        `Image saved: ${res.imageUrl}`,
-                        'success'
-                    );
-
-                }
-
-
-            } else {
-
-                throw new Error(
-                    res.message ||
-                    'Server Error'
-                );
-
-            }
-
-
-        } catch (error) {
-
-            t.syncStatus =
-                'error';
-
-
-            log(
-                `Sync Failed: ${error.message}`,
-                'error'
-            );
-
-        }
-
-
-        updateUI();
-
-    }
-
-
-    document
-        .getElementById(
-            'sync-btn-text'
-        )
-        .textContent =
-        "Sync to Sheet";
-
-
     updateUI();
+  }
 
-});
+  function updateUI() {
+    queueCounter.textContent = `${tickets.length} Items`;
+    const scannedCount = tickets.filter(t => t.scanStatus === 'success').length;
+    resultsCounter.textContent = `${scannedCount} Total`;
+
+    const hasPendingScan = tickets.some(t => t.scanStatus === 'pending' || t.scanStatus === 'error');
+    const hasPendingSync = tickets.some(t => t.scanStatus === 'success' && t.syncStatus !== 'success');
+
+    scanAllBtn.disabled = !hasPendingScan;
+    scanAllBtn.className = `mt-4 w-full font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${hasPendingScan ? 'btn-active-blue' : 'btn-soft-blue cursor-not-allowed'}`;
+    syncAllBtn.disabled = !hasPendingSync;
+    syncAllBtn.className = `w-full font-semibold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm ${hasPendingSync ? 'btn-active-emerald' : 'btn-soft-emerald cursor-not-allowed'}`;
+
+    galleryGrid.innerHTML = tickets.map(t => {
+      const label = t.scanStatus === 'success' ? '✅ SCAN' : t.scanStatus === 'scanning' ? '⏳ SCAN' : t.scanStatus === 'error' ? '❌ SCAN' : '🕒 SCAN';
+      return `<div class="relative bg-slate-100 rounded-xl overflow-hidden aspect-[4/3] border border-slate-200"><img src="${t.previewUrl}" class="w-full h-full object-cover"><div class="absolute top-2 left-2"><div class="status-badge px-2 py-1 rounded shadow-sm text-[10px] font-bold">${label}</div></div></div>`;
+    }).join('');
+
+    resultsList.innerHTML = tickets.filter(t => t.scanStatus === 'success').map(t => {
+      let badgeClass = 'bg-orange-100 text-orange-600 border-orange-200', label = 'Pending Sync';
+      if (t.syncStatus === 'success') { badgeClass='bg-emerald-100 text-emerald-700 border-emerald-200'; label='Synced Done'; }
+      if (t.syncStatus === 'syncing') { badgeClass='bg-blue-100 text-blue-600 border-blue-200'; label='Syncing...'; }
+      if (t.syncStatus === 'error') { badgeClass='bg-rose-100 text-rose-600 border-rose-200'; label='Sync Error'; }
+      return `<div class="p-3 bg-white border border-slate-200 rounded-xl shadow-sm"><div class="flex justify-between items-start gap-2"><div><div class="font-mono font-bold text-slate-900 text-xl tracking-widest leading-none mb-1">${escapeHtml(t.extractedData?.number)}</div><div class="text-[10px] text-slate-500 font-bold font-mono">${escapeHtml(t.extractedData?.formattedString)}</div>${t.imageUrl ? `<a class="text-[10px] text-blue-600 underline" target="_blank" href="${t.imageUrl}">Open GitHub image</a>`:''}</div><div class="px-2 py-1 rounded text-[9px] font-black border ${badgeClass} uppercase whitespace-nowrap">${label}</div></div></div>`;
+    }).join('');
+  }
+
+  async function runConcurrentQueue(items, task, limit) {
+    const executing = new Set();
+    const results = [];
+    for (const item of items) {
+      const p = Promise.resolve().then(() => task(item));
+      results.push(p); executing.add(p);
+      p.finally(() => executing.delete(p));
+      if (executing.size >= limit) await Promise.race(executing);
+    }
+    return Promise.allSettled(results);
+  }
+
+  scanAllBtn.addEventListener('click', async () => {
+    const pending = tickets.filter(t => t.scanStatus === 'pending' || t.scanStatus === 'error');
+    scanAllBtn.disabled = true;
+    document.getElementById('scan-btn-text').textContent = 'Processing...';
+    await runConcurrentQueue(pending, async t => {
+      t.scanStatus = 'scanning'; updateUI();
+      try {
+        const res = await postApi({ action:'scan', base64:t.base64, mimeType:t.mimeType });
+        t.extractedData = { number:res.number, formattedString:res.formattedString };
+        t.scanStatus = 'success';
+        log(`Extracted: ${res.formattedString}`, 'success');
+      } catch (e) {
+        t.scanStatus = 'error';
+        log(`Scan Error (${t.fileName}): ${e.message}`, 'error');
+      }
+      updateUI();
+    }, SCAN_CONCURRENCY);
+    document.getElementById('scan-btn-text').textContent = 'Fast Scan All Pending';
+    updateUI();
+  });
+
+  syncAllBtn.addEventListener('click', async () => {
+    const pending = tickets.filter(t => t.scanStatus === 'success' && t.syncStatus !== 'success');
+    if (!pending.length) return;
+    syncAllBtn.disabled = true;
+    document.getElementById('sync-btn-text').textContent = 'Syncing...';
+
+    // One-by-one GitHub writes avoid commit conflicts.
+    for (const t of pending) {
+      t.syncStatus = 'syncing'; updateUI();
+      try {
+        const res = await postApi({
+          action:'sync',
+          base64:t.base64,
+          filename:t.extractedData.number,
+          formattedString:t.extractedData.formattedString
+        });
+        t.syncStatus = 'success';
+        t.imageUrl = res.imageUrl || '';
+        log(`Synced: ${t.extractedData.formattedString}`, 'success');
+      } catch (e) {
+        t.syncStatus = 'error';
+        log(`Sync Failed: ${e.message}`, 'error');
+      }
+      updateUI();
+    }
+
+    document.getElementById('sync-btn-text').textContent = 'Sync to Sheet + GitHub';
+    updateUI();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Clear current session?')) {
+      tickets = [];
+      logsEl.innerHTML = '';
+      log('Workspace cleared.', 'action');
+      updateUI();
+    }
+  });
+
+  updateUI();
+})();
+</script>
+</body>
+</html>

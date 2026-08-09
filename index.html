@@ -1,1 +1,203 @@
 
+syncAllBtn.addEventListener('click', async () => {
+
+    const baseUrl =
+        webAppUrlInput.value.trim();
+
+
+    if (!baseUrl) {
+
+        log(
+            "Missing Web App URL",
+            "error"
+        );
+
+        return;
+
+    }
+
+
+    localStorage.setItem(
+        'lotteryWebAppUrl',
+        baseUrl
+    );
+
+
+    const pending =
+        tickets.filter(
+            t =>
+                t.scanStatus === 'success' &&
+                t.syncStatus !== 'success'
+        );
+
+
+    if (!pending.length) {
+
+        log(
+            "Nothing waiting to sync.",
+            "action"
+        );
+
+        return;
+
+    }
+
+
+    syncAllBtn.disabled = true;
+
+
+    document
+        .getElementById(
+            'sync-btn-text'
+        )
+        .textContent =
+        "Syncing...";
+
+
+    // ----------------------------------
+    // Upload ONE BY ONE
+    // ----------------------------------
+
+    for (const t of pending) {
+
+        t.syncStatus =
+            'syncing';
+
+        updateUI();
+
+
+        try {
+
+            log(
+                `Uploading ${t.extractedData.number}...`,
+                'action'
+            );
+
+
+            const response =
+                await fetch(
+                    baseUrl,
+                    {
+
+                        method: 'POST',
+
+                        headers: {
+
+                            'Content-Type':
+                                'text/plain;charset=utf-8'
+
+                        },
+
+                        body:
+                            JSON.stringify({
+
+                                base64:
+                                    t.base64,
+
+                                filename:
+                                    t.extractedData.number,
+
+                                formattedString:
+                                    t.extractedData.formattedString
+
+                            })
+
+                    }
+                );
+
+
+            const text =
+                await response.text();
+
+
+            let res;
+
+
+            try {
+
+                res =
+                    JSON.parse(text);
+
+            } catch (error) {
+
+                throw new Error(
+                    'Invalid response: ' +
+                    text.substring(
+                        0,
+                        200
+                    )
+                );
+
+            }
+
+
+            if (
+                res.status ===
+                'success'
+            ) {
+
+                t.syncStatus =
+                    'success';
+
+
+                t.imageUrl =
+                    res.imageUrl ||
+                    '';
+
+
+                log(
+                    `✓ Synced: ${t.extractedData.formattedString}`,
+                    'success'
+                );
+
+
+                if (res.imageUrl) {
+
+                    log(
+                        `Image saved: ${res.imageUrl}`,
+                        'success'
+                    );
+
+                }
+
+
+            } else {
+
+                throw new Error(
+                    res.message ||
+                    'Server Error'
+                );
+
+            }
+
+
+        } catch (error) {
+
+            t.syncStatus =
+                'error';
+
+
+            log(
+                `Sync Failed: ${error.message}`,
+                'error'
+            );
+
+        }
+
+
+        updateUI();
+
+    }
+
+
+    document
+        .getElementById(
+            'sync-btn-text'
+        )
+        .textContent =
+        "Sync to Sheet";
+
+
+    updateUI();
+
+});

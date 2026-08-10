@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Thai Lottery Management Portal v7.2.1</title>
+<title>Thai Lottery Management Portal v7.2.4</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
@@ -83,7 +83,16 @@ body{background:#f1f5f9;color:#0f172a}.hide-scrollbar::-webkit-scrollbar{display
       <div id="assignedCapture"><div id="assignedCustomerLabel" class="hidden mb-3 mx-auto max-w-2xl bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl px-5 py-2.5 text-center font-black"></div><div id="assignedGrid" class="stack-gallery"></div></div>
     </section>
 
-    <section id="view-wins" class="view hidden"><div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-black text-yellow-700">🏆 <span data-i18n="tab_wins">Win Prizes</span></h2><p class="text-sm text-slate-500" data-i18n="wins_desc">Tickets with a prize amount.</p></div><button class="captureBtn bg-yellow-500 text-white px-3 py-2 rounded-lg font-bold" data-target="winsGrid">📷 <span data-i18n="copy_layout">Copy Layout</span></button></div><div id="winsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div></section>
+    <section id="view-wins" class="view hidden">
+      <div class="flex justify-between items-center mb-4 gap-3">
+        <div>
+          <h2 class="text-xl font-black text-yellow-700">🏆 <span data-i18n="tab_wins">Win Prizes</span></h2>
+          <p class="text-sm text-slate-500" data-i18n="wins_desc">Winner name, lottery number and prize details.</p>
+        </div>
+        <button class="captureBtn bg-yellow-500 text-white px-3 py-2 rounded-lg font-bold" data-target="winsGrid">📷 <span data-i18n="copy_layout">Copy Layout</span></button>
+      </div>
+      <div id="winsGrid" class="overflow-hidden rounded-2xl border border-yellow-300 bg-white shadow-sm"></div>
+    </section>
   </main>
 </div>
 
@@ -107,10 +116,10 @@ const $=id=>document.getElementById(id), REQUIRED='7.1.0';
 let records=[], currentTab='list', unCols=3, asCols=3, unMode='photo', asMode='photo';
 let lang=localStorage.getItem('portalLang')||'en';
 const I18N={
- en:{title:'Thai Lottery Management Portal',subtitle:'GitHub Pages + Google Sheet + GitHub Photos',scanner:'Scanner',settings:'Settings',test:'Test',tab_list:'List View',tab_unassigned:'Unassigned',tab_assigned:'Assigned',tab_wins:'Win Prizes',draw_date:'Draw Date',customer_contact:'Customer / Contact',lottery_number:'Lottery Number',payment:'Payment',type_filter:'Type to filter...',all_payments:'All Payments',clear_filters:'Clear Filters',fetch_data:'Fetch Data',date:'Date',lottery:'Lottery',photo_action:'Photo / Action',unassigned_gallery:'Unassigned Tickets Gallery',unassigned_desc:'Click a ticket photo to assign it to a customer.',assigned_gallery:'Assigned Tickets Gallery',assigned_desc:"Same stacked-photo layout. Use Customer / Contact filter when you want one customer's tickets.",copy_layout:'Copy Layout',photos:'Photos',table:'Table',columns:'COLUMNS:',wins_desc:'Tickets with a prize amount.',edit_record:'Edit Record',timestamp:'Timestamp',customer_name:'Customer Name',social_platform:'Social Platform',social_phone:'Social ID / Phone',replace_photo:'Replace Ticket Photo → GitHub',delete_record:'Delete Record',cancel:'Cancel',save_changes:'Save Changes',no_records:'No records found.',no_tickets:'No tickets found.',no_winners:'No winning tickets.',no_photo:'No Photo',unassigned:'Unassigned',edit:'Edit',draw_prefix:'Draw',name:'Name',total:'Total',loading:'Loading...',saving:'Saving...',updated:'Record updated successfully.',deleted:'Record deleted.',delete_confirm:'Delete this Sheet row? The GitHub image will not be deleted.',layout_copied:'Layout copied to clipboard.',screenshot_failed:'Screenshot failed'},
- my:{title:'ထိုင်းထီ စီမံခန့်ခွဲမှုစနစ်',subtitle:'GitHub Pages + Google Sheet + GitHub ဓာတ်ပုံများ',scanner:'စကင်နာ',settings:'ဆက်တင်များ',test:'စမ်းသပ်မည်',tab_list:'စာရင်း',tab_unassigned:'မရောင်းရသေး',tab_assigned:'ရောင်းပြီး',tab_wins:'ဆုမဲပေါက်',draw_date:'ထီထွက်ရက်',customer_contact:'ဝယ်သူ / ဆက်သွယ်ရန်',lottery_number:'ထီဂဏန်း',payment:'ငွေပေးချေမှု',type_filter:'ရှာရန် ရိုက်ထည့်ပါ...',all_payments:'ငွေပေးချေမှုအားလုံး',clear_filters:'စစ်ထုတ်မှုရှင်းမည်',fetch_data:'ဒေတာယူမည်',date:'ရက်စွဲ',lottery:'ထီ',photo_action:'ဓာတ်ပုံ / လုပ်ဆောင်ချက်',unassigned_gallery:'မရောင်းရသေးသော ထီဓာတ်ပုံများ',unassigned_desc:'ဝယ်သူသတ်မှတ်ရန် ထီဓာတ်ပုံကို နှိပ်ပါ။',assigned_gallery:'ရောင်းပြီးသော ထီဓာတ်ပုံများ',assigned_desc:'တူညီသော ထပ်စီဓာတ်ပုံပုံစံဖြင့် ပြသသည်။ ဝယ်သူတစ်ဦး၏ထီများကိုကြည့်ရန် ဝယ်သူ/ဆက်သွယ်ရန်ဖြင့် ရှာပါ။',copy_layout:'ပုံစံကူးမည်',photos:'ဓာတ်ပုံများ',table:'ဇယား',columns:'ကော်လံ:',wins_desc:'ဆုကြေးရှိသော ထီလက်မှတ်များ။',edit_record:'မှတ်တမ်းပြင်မည်',timestamp:'အချိန်မှတ်တမ်း',customer_name:'ဝယ်သူအမည်',social_platform:'ပလက်ဖောင်း',social_phone:'Social ID / ဖုန်း',replace_photo:'ထီဓာတ်ပုံအသစ် → GitHub',delete_record:'မှတ်တမ်းဖျက်မည်',cancel:'မလုပ်တော့ပါ',save_changes:'သိမ်းမည်',no_records:'မှတ်တမ်း မတွေ့ပါ။',no_tickets:'ထီလက်မှတ် မတွေ့ပါ။',no_winners:'ဆုမဲပေါက်ထီ မတွေ့ပါ။',no_photo:'ဓာတ်ပုံမရှိ',unassigned:'မရောင်းရသေး',edit:'ပြင်မည်',draw_prefix:'ထီထွက်ရက်',name:'အမည်',total:'စုစုပေါင်း',loading:'လုပ်ဆောင်နေသည်...',saving:'သိမ်းနေသည်...',updated:'မှတ်တမ်းပြင်ဆင်ပြီးပါပြီ။',deleted:'မှတ်တမ်းဖျက်ပြီးပါပြီ။',delete_confirm:'ဤ Sheet row ကိုဖျက်မလား? GitHub ဓာတ်ပုံကို မဖျက်ပါ။',layout_copied:'ပုံစံကို clipboard သို့ ကူးပြီးပါပြီ။',screenshot_failed:'Screenshot မအောင်မြင်ပါ'},
- th:{title:'ระบบจัดการสลากกินแบ่งรัฐบาล',subtitle:'GitHub Pages + Google Sheet + รูปภาพ GitHub',scanner:'สแกนเนอร์',settings:'ตั้งค่า',test:'ทดสอบ',tab_list:'รายการ',tab_unassigned:'ยังไม่ระบุ',tab_assigned:'ระบุแล้ว',tab_wins:'ถูกรางวัล',draw_date:'วันที่ออกรางวัล',customer_contact:'ลูกค้า / ติดต่อ',lottery_number:'หมายเลขสลาก',payment:'การชำระเงิน',type_filter:'พิมพ์เพื่อกรอง...',all_payments:'การชำระเงินทั้งหมด',clear_filters:'ล้างตัวกรอง',fetch_data:'ดึงข้อมูล',date:'วันที่',lottery:'สลาก',photo_action:'รูปภาพ / จัดการ',unassigned_gallery:'แกลเลอรีสลากที่ยังไม่ระบุ',unassigned_desc:'คลิกรูปสลากเพื่อกำหนดให้ลูกค้า',assigned_gallery:'แกลเลอรีสลากที่ระบุแล้ว',assigned_desc:'ใช้รูปแบบภาพซ้อนเหมือนกัน ค้นหาด้วย ลูกค้า / ติดต่อ เพื่อดูสลากของลูกค้าคนเดียว',copy_layout:'คัดลอกเลย์เอาต์',photos:'รูปภาพ',table:'ตาราง',columns:'คอลัมน์:',wins_desc:'สลากที่มีจำนวนเงินรางวัล',edit_record:'แก้ไขข้อมูล',timestamp:'เวลาบันทึก',customer_name:'ชื่อลูกค้า',social_platform:'แพลตฟอร์ม',social_phone:'Social ID / โทรศัพท์',replace_photo:'เปลี่ยนรูปสลาก → GitHub',delete_record:'ลบข้อมูล',cancel:'ยกเลิก',save_changes:'บันทึก',no_records:'ไม่พบข้อมูล',no_tickets:'ไม่พบสลาก',no_winners:'ไม่พบสลากที่ถูกรางวัล',no_photo:'ไม่มีรูป',unassigned:'ยังไม่ระบุ',edit:'แก้ไข',draw_prefix:'งวด',name:'ชื่อ',total:'รวม',loading:'กำลังโหลด...',saving:'กำลังบันทึก...',updated:'อัปเดตข้อมูลสำเร็จ',deleted:'ลบข้อมูลแล้ว',delete_confirm:'ลบแถวนี้ใน Sheet หรือไม่? รูปใน GitHub จะไม่ถูกลบ',layout_copied:'คัดลอกเลย์เอาต์แล้ว',screenshot_failed:'จับภาพไม่สำเร็จ'},
- zh:{title:'泰国彩票管理系统',subtitle:'GitHub Pages + Google Sheet + GitHub 图片',scanner:'扫描器',settings:'设置',test:'测试',tab_list:'列表',tab_unassigned:'未分配',tab_assigned:'已分配',tab_wins:'中奖彩票',draw_date:'开奖日期',customer_contact:'客户 / 联系方式',lottery_number:'彩票号码',payment:'付款方式',type_filter:'输入以筛选...',all_payments:'所有付款方式',clear_filters:'清除筛选',fetch_data:'获取数据',date:'日期',lottery:'彩票',photo_action:'照片 / 操作',unassigned_gallery:'未分配彩票图库',unassigned_desc:'点击彩票照片为其分配客户。',assigned_gallery:'已分配彩票图库',assigned_desc:'使用相同的叠放照片布局。可按客户 / 联系方式筛选单个客户的彩票。',copy_layout:'复制布局',photos:'照片',table:'表格',columns:'列数:',wins_desc:'所有已设置奖金的彩票。',edit_record:'编辑记录',timestamp:'时间戳',customer_name:'客户姓名',social_platform:'社交平台',social_phone:'社交 ID / 电话',replace_photo:'替换彩票照片 → GitHub',delete_record:'删除记录',cancel:'取消',save_changes:'保存更改',no_records:'未找到记录。',no_tickets:'未找到彩票。',no_winners:'未找到中奖彩票。',no_photo:'无照片',unassigned:'未分配',edit:'编辑',draw_prefix:'开奖',name:'姓名',total:'总计',loading:'加载中...',saving:'保存中...',updated:'记录更新成功。',deleted:'记录已删除。',delete_confirm:'删除此 Sheet 行吗？GitHub 图片不会被删除。',layout_copied:'布局已复制到剪贴板。',screenshot_failed:'截图失败'}
+ en:{title:'Thai Lottery Management Portal',subtitle:'GitHub Pages + Google Sheet + GitHub Photos',scanner:'Scanner',settings:'Settings',test:'Test',tab_list:'List View',tab_unassigned:'Unassigned',tab_assigned:'Assigned',tab_wins:'Win Prizes',draw_date:'Draw Date',customer_contact:'Customer / Contact',lottery_number:'Lottery Number',payment:'Payment',type_filter:'Type to filter...',all_payments:'All Payments',clear_filters:'Clear Filters',fetch_data:'Fetch Data',date:'Date',lottery:'Lottery',photo_action:'Photo / Action',unassigned_gallery:'Unassigned Tickets Gallery',unassigned_desc:'Click a ticket photo to assign it to a customer.',assigned_gallery:'Assigned Tickets Gallery',assigned_desc:"Same stacked-photo layout. Use Customer / Contact filter when you want one customer's tickets.",copy_layout:'Copy Layout',photos:'Photos',table:'Table',columns:'COLUMNS:',wins_desc:'Winner name, lottery number and prize details.',win_name:'Name',win_number:'Lottery Number',win_amount:'Win Prize Amount',win_prize:'Win Prize',official_prize:'Official Prize',total_prize:'Total Prize',edit_record:'Edit Record',timestamp:'Timestamp',customer_name:'Customer Name',social_platform:'Social Platform',social_phone:'Social ID / Phone',replace_photo:'Replace Ticket Photo → GitHub',delete_record:'Delete Record',cancel:'Cancel',save_changes:'Save Changes',no_records:'No records found.',no_tickets:'No tickets found.',no_winners:'No winning tickets.',no_photo:'No Photo',unassigned:'Unassigned',edit:'Edit',draw_prefix:'Draw',name:'Name',total:'Total',loading:'Loading...',saving:'Saving...',updated:'Record updated successfully.',deleted:'Record deleted.',delete_confirm:'Delete this Sheet row? The GitHub image will not be deleted.',layout_copied:'Layout copied to clipboard.',screenshot_failed:'Screenshot failed'},
+ my:{title:'ထိုင်းထီ စီမံခန့်ခွဲမှုစနစ်',subtitle:'GitHub Pages + Google Sheet + GitHub ဓာတ်ပုံများ',scanner:'စကင်နာ',settings:'ဆက်တင်များ',test:'စမ်းသပ်မည်',tab_list:'စာရင်း',tab_unassigned:'မရောင်းရသေး',tab_assigned:'ရောင်းပြီး',tab_wins:'ဆုမဲပေါက်',draw_date:'ထီထွက်ရက်',customer_contact:'ဝယ်သူ / ဆက်သွယ်ရန်',lottery_number:'ထီဂဏန်း',payment:'ငွေပေးချေမှု',type_filter:'ရှာရန် ရိုက်ထည့်ပါ...',all_payments:'ငွေပေးချေမှုအားလုံး',clear_filters:'စစ်ထုတ်မှုရှင်းမည်',fetch_data:'ဒေတာယူမည်',date:'ရက်စွဲ',lottery:'ထီ',photo_action:'ဓာတ်ပုံ / လုပ်ဆောင်ချက်',unassigned_gallery:'မရောင်းရသေးသော ထီဓာတ်ပုံများ',unassigned_desc:'ဝယ်သူသတ်မှတ်ရန် ထီဓာတ်ပုံကို နှိပ်ပါ။',assigned_gallery:'ရောင်းပြီးသော ထီဓာတ်ပုံများ',assigned_desc:'တူညီသော ထပ်စီဓာတ်ပုံပုံစံဖြင့် ပြသသည်။ ဝယ်သူတစ်ဦး၏ထီများကိုကြည့်ရန် ဝယ်သူ/ဆက်သွယ်ရန်ဖြင့် ရှာပါ။',copy_layout:'ပုံစံကူးမည်',photos:'ဓာတ်ပုံများ',table:'ဇယား',columns:'ကော်လံ:',wins_desc:'ပေါက်မဲရသူအမည်၊ ထီဂဏန်းနှင့် ဆုအမျိုးအစားများ။',win_name:'အမည်',win_number:'ထီဂဏန်း',win_amount:'ဆုကြေးငွေ',win_prize:'ပေါက်မဲဆု',official_prize:'တရားဝင်ဆု',total_prize:'စုစုပေါင်းဆုကြေး',edit_record:'မှတ်တမ်းပြင်မည်',timestamp:'အချိန်မှတ်တမ်း',customer_name:'ဝယ်သူအမည်',social_platform:'ပလက်ဖောင်း',social_phone:'Social ID / ဖုန်း',replace_photo:'ထီဓာတ်ပုံအသစ် → GitHub',delete_record:'မှတ်တမ်းဖျက်မည်',cancel:'မလုပ်တော့ပါ',save_changes:'သိမ်းမည်',no_records:'မှတ်တမ်း မတွေ့ပါ။',no_tickets:'ထီလက်မှတ် မတွေ့ပါ။',no_winners:'ဆုမဲပေါက်ထီ မတွေ့ပါ။',no_photo:'ဓာတ်ပုံမရှိ',unassigned:'မရောင်းရသေး',edit:'ပြင်မည်',draw_prefix:'ထီထွက်ရက်',name:'အမည်',total:'စုစုပေါင်း',loading:'လုပ်ဆောင်နေသည်...',saving:'သိမ်းနေသည်...',updated:'မှတ်တမ်းပြင်ဆင်ပြီးပါပြီ။',deleted:'မှတ်တမ်းဖျက်ပြီးပါပြီ။',delete_confirm:'ဤ Sheet row ကိုဖျက်မလား? GitHub ဓာတ်ပုံကို မဖျက်ပါ။',layout_copied:'ပုံစံကို clipboard သို့ ကူးပြီးပါပြီ။',screenshot_failed:'Screenshot မအောင်မြင်ပါ'},
+ th:{title:'ระบบจัดการสลากกินแบ่งรัฐบาล',subtitle:'GitHub Pages + Google Sheet + รูปภาพ GitHub',scanner:'สแกนเนอร์',settings:'ตั้งค่า',test:'ทดสอบ',tab_list:'รายการ',tab_unassigned:'ยังไม่ระบุ',tab_assigned:'ระบุแล้ว',tab_wins:'ถูกรางวัล',draw_date:'วันที่ออกรางวัล',customer_contact:'ลูกค้า / ติดต่อ',lottery_number:'หมายเลขสลาก',payment:'การชำระเงิน',type_filter:'พิมพ์เพื่อกรอง...',all_payments:'การชำระเงินทั้งหมด',clear_filters:'ล้างตัวกรอง',fetch_data:'ดึงข้อมูล',date:'วันที่',lottery:'สลาก',photo_action:'รูปภาพ / จัดการ',unassigned_gallery:'แกลเลอรีสลากที่ยังไม่ระบุ',unassigned_desc:'คลิกรูปสลากเพื่อกำหนดให้ลูกค้า',assigned_gallery:'แกลเลอรีสลากที่ระบุแล้ว',assigned_desc:'ใช้รูปแบบภาพซ้อนเหมือนกัน ค้นหาด้วย ลูกค้า / ติดต่อ เพื่อดูสลากของลูกค้าคนเดียว',copy_layout:'คัดลอกเลย์เอาต์',photos:'รูปภาพ',table:'ตาราง',columns:'คอลัมน์:',wins_desc:'ชื่อผู้ถูกรางวัล หมายเลขสลาก และรายละเอียดรางวัล',win_name:'ชื่อ',win_number:'หมายเลขสลาก',win_amount:'จำนวนเงินรางวัล',win_prize:'รางวัลที่ถูก',official_prize:'รางวัลทางการ',total_prize:'รวมเงินรางวัล',edit_record:'แก้ไขข้อมูล',timestamp:'เวลาบันทึก',customer_name:'ชื่อลูกค้า',social_platform:'แพลตฟอร์ม',social_phone:'Social ID / โทรศัพท์',replace_photo:'เปลี่ยนรูปสลาก → GitHub',delete_record:'ลบข้อมูล',cancel:'ยกเลิก',save_changes:'บันทึก',no_records:'ไม่พบข้อมูล',no_tickets:'ไม่พบสลาก',no_winners:'ไม่พบสลากที่ถูกรางวัล',no_photo:'ไม่มีรูป',unassigned:'ยังไม่ระบุ',edit:'แก้ไข',draw_prefix:'งวด',name:'ชื่อ',total:'รวม',loading:'กำลังโหลด...',saving:'กำลังบันทึก...',updated:'อัปเดตข้อมูลสำเร็จ',deleted:'ลบข้อมูลแล้ว',delete_confirm:'ลบแถวนี้ใน Sheet หรือไม่? รูปใน GitHub จะไม่ถูกลบ',layout_copied:'คัดลอกเลย์เอาต์แล้ว',screenshot_failed:'จับภาพไม่สำเร็จ'},
+ zh:{title:'泰国彩票管理系统',subtitle:'GitHub Pages + Google Sheet + GitHub 图片',scanner:'扫描器',settings:'设置',test:'测试',tab_list:'列表',tab_unassigned:'未分配',tab_assigned:'已分配',tab_wins:'中奖彩票',draw_date:'开奖日期',customer_contact:'客户 / 联系方式',lottery_number:'彩票号码',payment:'付款方式',type_filter:'输入以筛选...',all_payments:'所有付款方式',clear_filters:'清除筛选',fetch_data:'获取数据',date:'日期',lottery:'彩票',photo_action:'照片 / 操作',unassigned_gallery:'未分配彩票图库',unassigned_desc:'点击彩票照片为其分配客户。',assigned_gallery:'已分配彩票图库',assigned_desc:'使用相同的叠放照片布局。可按客户 / 联系方式筛选单个客户的彩票。',copy_layout:'复制布局',photos:'照片',table:'表格',columns:'列数:',wins_desc:'显示中奖者姓名、彩票号码和中奖明细。',win_name:'姓名',win_number:'彩票号码',win_amount:'中奖金额',win_prize:'中奖奖项',official_prize:'官方奖项',total_prize:'总奖金',edit_record:'编辑记录',timestamp:'时间戳',customer_name:'客户姓名',social_platform:'社交平台',social_phone:'社交 ID / 电话',replace_photo:'替换彩票照片 → GitHub',delete_record:'删除记录',cancel:'取消',save_changes:'保存更改',no_records:'未找到记录。',no_tickets:'未找到彩票。',no_winners:'未找到中奖彩票。',no_photo:'无照片',unassigned:'未分配',edit:'编辑',draw_prefix:'开奖',name:'姓名',total:'总计',loading:'加载中...',saving:'保存中...',updated:'记录更新成功。',deleted:'记录已删除。',delete_confirm:'删除此 Sheet 行吗？GitHub 图片不会被删除。',layout_copied:'布局已复制到剪贴板。',screenshot_failed:'截图失败'}
 };
 function t(k){return (I18N[lang]&&I18N[lang][k])||I18N.en[k]||k}
 function applyLanguage(){
@@ -161,7 +170,70 @@ function renderStackGallery(id,data,showName,cols,mode){const g=$(id);if(!data.l
   g.className=`stack-gallery grid ${gridClass} gap-2 sm:gap-4`;
   g.innerHTML=columns.map(col=>`<div class="stack-column">${col.map((r,i)=>{const u=r.photoUrl||'';const src=u||'';return `<div class="stack-ticket editCard" data-row="${r.rowNumber}" style="z-index:1">${src?`<img src="${esc(src)}" data-photo="${esc(src)}" alt="Ticket ${esc(r.lotteryNumber)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.minHeight='90px';this.style.background='#fff'">`:`<div class="aspect-[4/3] bg-slate-100 flex items-center justify-center text-slate-400">${t('no_photo')}</div>`}<div class="stack-label">${esc(r.lotteryNumber)}</div>${showName?`<div class="stack-name">${esc(r.customerName||'')}</div>`:''}${prize(r)?`<div class="absolute top-1.5 right-1.5 z-[120] bg-yellow-400 text-yellow-950 text-[9px] font-black px-1.5 py-0.5 rounded shadow">🏆 ${prize(r)}</div>`:''}</div>`}).join('')}</div>`).join('')
 }
-function renderWins(data){const g=$('winsGrid');if(!data.length){g.innerHTML=`<div class="col-span-full p-10 text-center text-slate-400">${t('no_winners')}</div>`;return}g.innerHTML=data.map(r=>`<div class="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-300 rounded-xl p-3 flex gap-3 items-center">${photo(r,'w-24 h-20')}<div class="flex-1"><div class="font-mono text-xl font-black">${esc(r.lotteryNumber)}</div><div class="font-bold">${esc(r.customerName||t('unassigned'))}</div><div class="text-yellow-700 text-xl font-black">🏆 ${prize(r)}</div>${r.specialPrizeName?`<div class="text-xs text-yellow-700">${esc(r.specialPrizeName)}</div>`:''}</div><button class="editBtn text-blue-600 font-bold" data-row="${r.rowNumber}">${t('edit')}</button></div>`).join('')}
+function renderWins(data){
+  const g=$('winsGrid');
+  if(!data.length){
+    g.innerHTML=`<div class="p-10 text-center text-slate-400">${t('no_winners')}</div>`;
+    return;
+  }
+
+  const details=r=>{
+    const lines=[];
+    if(r.specialPrizeName){
+      String(r.specialPrizeName)
+        .split(/\r?\n|\s*\|\s*/)
+        .map(x=>x.trim())
+        .filter(Boolean)
+        .forEach(x=>lines.push(x));
+    }
+    if((Number(r.simplePrize)||0)>0 && !lines.length) lines.push(t('official_prize'));
+    if(!lines.length) lines.push(t('win_prize'));
+    return lines;
+  };
+
+  const fmtAmount=v=>{
+    const n=Number(v)||0;
+    return n ? n.toLocaleString() : '-';
+  };
+
+  g.innerHTML=`
+    <div class="overflow-x-auto">
+      <div class="min-w-[760px]">
+        <div class="grid grid-cols-[minmax(150px,1.15fr)_minmax(150px,0.9fr)_minmax(160px,0.9fr)_minmax(260px,2fr)] bg-gradient-to-r from-yellow-400 via-amber-400 to-orange-400 text-yellow-950 font-black text-xs sm:text-sm shadow-sm">
+          <div class="p-3 sm:p-4 border-r border-yellow-500/40">${t('win_name')}</div>
+          <div class="p-3 sm:p-4 border-r border-yellow-500/40">${t('win_number')}</div>
+          <div class="p-3 sm:p-4 border-r border-yellow-500/40 text-right">${t('win_amount')}</div>
+          <div class="p-3 sm:p-4">${t('win_prize')}</div>
+        </div>
+
+        ${data.map((r,i)=>{
+          const total=prize(r);
+          const prizeLines=details(r)
+            .map(x=>`<div class="flex items-start gap-2 leading-relaxed"><span class="shrink-0">🏆</span><span class="font-bold text-slate-800">${esc(x)}</span></div>`)
+            .join('');
+
+          return `<div class="grid grid-cols-[minmax(150px,1.15fr)_minmax(150px,0.9fr)_minmax(160px,0.9fr)_minmax(260px,2fr)] items-stretch ${i?'border-t border-yellow-200':''} bg-white hover:bg-yellow-50/80 transition editCard cursor-pointer" data-row="${r.rowNumber}">
+            <div class="p-3 sm:p-4 border-r border-yellow-100 flex items-center">
+              <div>
+                <div class="font-black text-slate-900 break-words">${esc(r.customerName||t('unassigned'))}</div>
+                ${(r.socialPlatform||r.socialContact)?`<div class="mt-1 text-[10px] sm:text-xs text-slate-500">${esc([r.socialPlatform,r.socialContact].filter(Boolean).join(' • '))}</div>`:''}
+              </div>
+            </div>
+            <div class="p-3 sm:p-4 border-r border-yellow-100 flex items-center">
+              <span class="inline-flex rounded-lg bg-blue-50 border border-blue-200 px-3 py-1.5 font-mono text-lg sm:text-xl font-black text-blue-700 tracking-wider">${esc(r.lotteryNumber)}</span>
+            </div>
+            <div class="p-3 sm:p-4 border-r border-yellow-100 flex items-center justify-end text-right">
+              <div>
+                <div class="text-xl sm:text-2xl font-black text-emerald-700">${fmtAmount(total)}</div>
+                <div class="text-[10px] uppercase tracking-wide text-slate-400 font-bold">${t('win_amount')}</div>
+              </div>
+            </div>
+            <div class="p-3 sm:p-4 flex flex-col justify-center gap-1.5">${prizeLines}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
 function bindDynamic(){document.querySelectorAll('.editBtn,.editCard').forEach(x=>x.onclick=e=>{if(e.target.matches('img[data-photo]'))return;openEdit(Number(x.dataset.row))});document.querySelectorAll('img[data-photo]').forEach(x=>x.onclick=e=>{e.stopPropagation();$('largeImage').src=x.dataset.photo;$('imageModal').classList.remove('hidden')})}
 
 async function load(){const btn=$('refreshBtn'),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='⏳ '+t('loading');try{const r=await api('portalSearch',{query:{customerName:'',lotteryNumber:'',drawDate:'',payment:''}});if(!r.success)throw Error(r.message||'Search failed');records=r.data||[];render();

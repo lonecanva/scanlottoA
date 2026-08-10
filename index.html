@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fast Bulk Lottery Scanner v6</title>
+<title>Fast Bulk Lottery Scanner v6.2</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- ZXing-C++ WebAssembly reader. Supports Data Matrix in browser. -->
 <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/iife/reader/index.js"></script>
@@ -18,7 +18,7 @@
 <body class="p-3 md:p-6">
 <div class="max-w-6xl mx-auto space-y-5">
  <div class="bg-white rounded-2xl border shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
+  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6.2</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
   <div class="flex gap-2"><button id="toggle-settings" class="px-4 py-2 rounded-lg bg-slate-100 font-semibold">Settings</button><button id="clear-btn" class="px-4 py-2 rounded-lg bg-rose-50 text-rose-600 font-semibold">Reset</button></div>
  </div>
  <div id="settings-content" class="bg-blue-50 rounded-2xl border border-blue-100">
@@ -37,18 +37,21 @@
   <div class="lg:col-span-5 bg-white rounded-2xl border shadow-sm p-5 flex flex-col h-[650px]">
    <div class="flex justify-between border-b pb-2 mb-3"><b>Extracted Results</b><span id="results-counter" class="text-xs bg-green-50 text-green-700 rounded px-2 py-1">0 Total</span></div>
    <div id="results-list" class="flex-1 overflow-auto custom-scrollbar space-y-3 pr-1"></div>
-   <button id="sync-all-btn" class="mt-4 w-full py-3 rounded-xl font-bold btn-green">Sync to Sheet + GitHub</button>
+   <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <button id="sync-sheet-btn" class="w-full py-3 rounded-xl font-bold bg-blue-600 text-white">📄 Sync to Sheet Only</button>
+    <button id="sync-all-btn" class="w-full py-3 rounded-xl font-bold btn-green">☁️ Sync to Sheet + GitHub</button>
+   </div>
   </div>
  </div>
- <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6 ready. Uses Data Matrix like the offline PC scanner.</div></div></div>
+ <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6.2 ready. Choose Sheet Only or Sheet + GitHub.</div></div></div>
 </div>
 <script>
 (() => {
  'use strict';
- const MAX_FILES=200, REQUIRED_BACKEND_VERSION='6.1.0';
+ const MAX_FILES=200, REQUIRED_BACKEND_VERSION='6.2.0';
  let tickets=[];
  const $=id=>document.getElementById(id);
- const fileInput=$('file-input'),dropZone=$('drop-zone'),gallery=$('gallery-grid'),results=$('results-list'),scanBtn=$('scan-all-btn'),syncBtn=$('sync-all-btn'),webUrl=$('webapp-url');
+ const fileInput=$('file-input'),dropZone=$('drop-zone'),gallery=$('gallery-grid'),results=$('results-list'),scanBtn=$('scan-all-btn'),sheetBtn=$('sync-sheet-btn'),syncBtn=$('sync-all-btn'),webUrl=$('webapp-url');
  const DM_RE=/(?<year>\d{2})-(?<period>\d{2})-(?<set>\d{2})-(?<number>\d{6})(?:-(?<suffix>\d{4}))?/;
  const saved=localStorage.getItem('lotteryWebAppUrl'); if(saved) webUrl.value=saved;
  $('toggle-settings').onclick=()=> $('settings-content').classList.toggle('open');
@@ -59,12 +62,46 @@
  $('test-api-btn').onclick=async()=>{try{localStorage.setItem('lotteryWebAppUrl',webUrl.value.trim());const d=await postApi({action:'ping'});if(d.backendVersion!==REQUIRED_BACKEND_VERSION)throw Error(`Redeploy Code.gs as NEW VERSION. Need ${REQUIRED_BACKEND_VERSION}, got ${d.backendVersion||'unknown'}`);$('api-status').textContent='✅ Connected v'+d.backendVersion;$('api-status').className='text-xs text-emerald-600 font-semibold';log('Apps Script connected v'+d.backendVersion,'success')}catch(e){$('api-status').textContent='❌ '+e.message;$('api-status').className='text-xs text-rose-600 font-semibold';log(e.message,'error')}};
  ['dragenter','dragover','dragleave','drop'].forEach(n=>dropZone.addEventListener(n,e=>{e.preventDefault();e.stopPropagation()}));dropZone.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));fileInput.onchange=e=>{handleFiles(e.target.files);fileInput.value=''};
  async function fileToData(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=()=>rej(Error('Read failed'));fr.onload=e=>{const im=new Image();im.onerror=()=>rej(Error('Invalid image'));im.onload=()=>{const max=1400,s=Math.min(1,max/im.width);const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.9))};im.src=e.target.result};fr.readAsDataURL(file)})}
- async function handleFiles(list){for(const f of Array.from(list).slice(0,MAX_FILES-tickets.length)){if(!f.type.startsWith('image/'))continue;try{const preview=await fileToData(f);tickets.push({id:(crypto.randomUUID?.()||Date.now()+Math.random()),fileName:f.name,previewUrl:preview,base64:preview.split(',')[1],scanStatus:'pending',syncStatus:'pending',extractedData:null,imageUrl:'',method:''})}catch(e){log(f.name+': '+e.message,'error')}}updateUI()}
+ async function handleFiles(list){for(const f of Array.from(list).slice(0,MAX_FILES-tickets.length)){if(!f.type.startsWith('image/'))continue;try{const preview=await fileToData(f);tickets.push({id:(crypto.randomUUID?.()||Date.now()+Math.random()),fileName:f.name,previewUrl:preview,base64:preview.split(',')[1],scanStatus:'pending',syncStatus:'pending',sheetSaved:false,githubSaved:false,extractedData:null,imageUrl:'',method:''})}catch(e){log(f.name+': '+e.message,'error')}}updateUI()}
  function valid2(v){return /^\d{2}$/.test(v)} function valid4(v){return /^\d{4}$/.test(v)} function valid6(v){return /^\d{6}$/.test(v)}
  function recalc(t){const d=t.extractedData;if(!d)return;d.formattedString=`${d.yy||'??'}-${d.period||'??'}-${d.set||'??'}-${d.number||'??????'}-${d.suffix||'????'}`}
  function isComplete(d){return d&&valid2(d.yy)&&valid2(d.period)&&valid2(d.set)&&valid6(d.number)&&valid4(d.suffix)}
- function updateUI(){ $('queue-counter').textContent=tickets.length+' Items';$('results-counter').textContent=tickets.filter(t=>t.scanStatus==='success').length+' Total';const pend=tickets.some(t=>['pending','error'].includes(t.scanStatus));scanBtn.disabled=!pend;scanBtn.className='mt-4 w-full py-3 rounded-xl font-bold '+(pend?'btn-blue':'btn-disabled');const canSync=tickets.some(t=>t.scanStatus==='success'&&t.syncStatus!=='success'&&isComplete(t.extractedData));syncBtn.disabled=!canSync;syncBtn.className='mt-4 w-full py-3 rounded-xl font-bold '+(canSync?'btn-green':'bg-emerald-100 text-emerald-400');gallery.innerHTML=tickets.map(t=>`<div class="relative rounded-xl overflow-hidden border bg-slate-100 aspect-[4/3]"><img src="${t.previewUrl}" class="w-full h-full object-cover"><div class="absolute top-2 left-2 status-badge rounded px-2 py-1 text-[10px] font-bold">${t.scanStatus==='success'?'✅':t.scanStatus==='scanning'?'⏳':t.scanStatus==='error'?'❌':'🕒'} SCAN</div></div>`).join('');
- results.innerHTML=tickets.filter(t=>t.scanStatus==='success').map(t=>{const d=t.extractedData||{},complete=isComplete(d);let badge=t.syncStatus==='success'?'SYNCED':t.syncStatus==='partial'?'SHEET SAVED':t.syncStatus==='error'?'SYNC ERROR':'PENDING SYNC';return `<div class="p-3 border rounded-xl shadow-sm"><div class="flex justify-between gap-2"><div class="font-mono text-xl font-black tracking-widest">${esc(d.number||'')}</div><span class="text-[9px] font-bold ${complete?'text-emerald-600':'text-rose-600'}">${esc(badge)}</span></div><div class="text-[9px] text-blue-600 font-semibold mb-2">${esc(t.method||'')}</div><div class="grid grid-cols-5 gap-1 text-center">${[['yy','YY',2],['period','Period',2],['set','Set',2],['number','Number',6],['suffix','Suffix',4]].map(([k,l,n])=>`<label class="text-[9px] text-slate-500">${l}<input data-id="${t.id}" data-field="${k}" maxlength="${n}" value="${esc(d[k]||'')}" class="ticket-field mt-1 w-full rounded border px-1 py-1 text-[10px] font-mono text-center ${String(d[k]||'').length===n?'field-ok':'field-bad'}"></label>`).join('')}</div><div class="mt-2 text-[10px] font-mono text-slate-600">${esc(d.formattedString||'')}</div>${!complete?'<div class="mt-1 text-[9px] text-rose-600">⚠ Data Matrix not complete. Correct red fields before sync.</div>':''}</div>`}).join('');document.querySelectorAll('.ticket-field').forEach(el=>el.oninput=()=>{const t=tickets.find(x=>String(x.id)===el.dataset.id);if(!t)return;const n={yy:2,period:2,set:2,number:6,suffix:4}[el.dataset.field];t.extractedData[el.dataset.field]=el.value.replace(/\D/g,'').slice(0,n);recalc(t);updateUI()})}
+ function updateUI(){
+  $('queue-counter').textContent=tickets.length+' Items';
+  $('results-counter').textContent=tickets.filter(t=>t.scanStatus==='success').length+' Total';
+  const pend=tickets.some(t=>['pending','error'].includes(t.scanStatus));
+  scanBtn.disabled=!pend;
+  scanBtn.className='mt-4 w-full py-3 rounded-xl font-bold '+(pend?'btn-blue':'btn-disabled');
+
+  const canSheet=tickets.some(t=>t.scanStatus==='success'&&!t.sheetSaved&&isComplete(t.extractedData));
+  const canFull=tickets.some(t=>t.scanStatus==='success'&&!t.githubSaved&&isComplete(t.extractedData));
+  sheetBtn.disabled=!canSheet;
+  sheetBtn.className='w-full py-3 rounded-xl font-bold '+(canSheet?'bg-blue-600 text-white':'bg-blue-100 text-blue-300 cursor-not-allowed');
+  syncBtn.disabled=!canFull;
+  syncBtn.className='w-full py-3 rounded-xl font-bold '+(canFull?'btn-green':'bg-emerald-100 text-emerald-300 cursor-not-allowed');
+
+  gallery.innerHTML=tickets.map(t=>`<div class="relative rounded-xl overflow-hidden border bg-slate-100 aspect-[4/3]"><img src="${t.previewUrl}" class="w-full h-full object-cover"><div class="absolute top-2 left-2 status-badge rounded px-2 py-1 text-[10px] font-bold">${t.scanStatus==='success'?'✅':t.scanStatus==='scanning'?'⏳':t.scanStatus==='error'?'❌':'🕒'} SCAN</div></div>`).join('');
+
+  results.innerHTML=tickets.filter(t=>t.scanStatus==='success').map(t=>{
+   const d=t.extractedData||{},complete=isComplete(d);
+   let badge='PENDING SYNC', badgeClass='text-orange-600';
+   if(t.githubSaved){badge='SHEET + GITHUB ✅';badgeClass='text-emerald-600'}
+   else if(t.sheetSaved){badge='SHEET ONLY ✅';badgeClass='text-blue-600'}
+   else if(t.syncStatus==='syncing'){badge='SYNCING...';badgeClass='text-blue-600'}
+   else if(t.syncStatus==='error'){badge='SYNC ERROR';badgeClass='text-rose-600'}
+   return `<div class="p-3 border rounded-xl shadow-sm"><div class="flex justify-between gap-2"><div class="font-mono text-xl font-black tracking-widest">${esc(d.number||'')}</div><span class="text-[9px] font-bold ${badgeClass}">${esc(badge)}</span></div><div class="text-[9px] text-blue-600 font-semibold mb-2">${esc(t.method||'')}</div><div class="grid grid-cols-5 gap-1 text-center">${[['yy','YY',2],['period','Period',2],['set','Set',2],['number','Number',6],['suffix','Suffix',4]].map(([k,l,n])=>`<label class="text-[9px] text-slate-500">${l}<input data-id="${t.id}" data-field="${k}" maxlength="${n}" value="${esc(d[k]||'')}" class="ticket-field mt-1 w-full rounded border px-1 py-1 text-[10px] font-mono text-center ${String(d[k]||'').length===n?'field-ok':'field-bad'}"></label>`).join('')}</div><div class="mt-2 text-[10px] font-mono text-slate-600">${esc(d.formattedString||'')}</div>${!complete?'<div class="mt-1 text-[9px] text-rose-600">⚠ Data Matrix not complete. Correct red fields before sync.</div>':''}</div>`
+  }).join('');
+
+  document.querySelectorAll('.ticket-field').forEach(el=>el.oninput=()=>{
+   const t=tickets.find(x=>String(x.id)===el.dataset.id);if(!t)return;
+   const n={yy:2,period:2,set:2,number:6,suffix:4}[el.dataset.field];
+   t.extractedData[el.dataset.field]=el.value.replace(/\D/g,'').slice(0,n);
+   recalc(t);
+   // Edited data should be saved again. If GitHub was already saved, the image remains saved.
+   t.sheetSaved=false;
+   updateUI();
+  })
+ }
  function loadImg(url){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=url})}
  function rotateCanvas(src,angle){const c=document.createElement('canvas'),ctx=c.getContext('2d');if(angle===90||angle===270){c.width=src.height;c.height=src.width}else{c.width=src.width;c.height=src.height}ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);ctx.drawImage(src,-src.width/2,-src.height/2);return c}
  function cropCanvas(src,x1r,y1r,x2r,y2r,scale=1){const x=Math.floor(src.width*x1r),y=Math.floor(src.height*y1r),w=Math.max(1,Math.floor(src.width*(x2r-x1r))),h=Math.max(1,Math.floor(src.height*(y2r-y1r)));const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);c.getContext('2d').drawImage(src,x,y,w,h,0,0,c.width,c.height);return c}
@@ -78,8 +115,44 @@
  if(votes.size){const ranked=[...votes.entries()].sort((a,b)=>b[1]-a[1]);const p=examples.get(ranked[0][0]);return {data:p,method:`Data Matrix single read • REVIEW (${ranked[0][1]} vote)`,attempts}}
  const num=filenameNumber(t.fileName);return {data:{yy:'69',period:'',set:'',number:num,suffix:'',formattedString:`69-??-??-${num||'??????'}-????`,raw:''},method:'Data Matrix not decoded • filename fallback',attempts}}
  scanBtn.onclick=async()=>{const list=tickets.filter(t=>['pending','error'].includes(t.scanStatus));scanBtn.disabled=true;for(let i=0;i<list.length;i++){const t=list[i];t.scanStatus='scanning';$('scan-btn-text').textContent=`Data Matrix ${i+1}/${list.length}`;updateUI();try{const r=await decodePcStyle(t);t.extractedData=r.data;t.method=r.method;t.scanStatus='success';log(`${t.fileName}: ${r.data.formattedString} | ${r.method} | ${r.attempts} attempts`,isComplete(r.data)?'success':'error')}catch(e){t.scanStatus='error';log(`Scan Error ${t.fileName}: ${e.message}`,'error')}updateUI()}$('scan-btn-text').textContent='Decode Data Matrix';updateUI()};
- syncBtn.onclick=async()=>{const list=tickets.filter(t=>t.scanStatus==='success'&&t.syncStatus!=='success'&&isComplete(t.extractedData));for(const t of list){t.syncStatus='syncing';updateUI();try{const d=await postApi({action:'sync',base64:t.base64,filename:t.extractedData.number,formattedString:t.extractedData.formattedString});t.imageUrl=d.imageUrl||'';t.syncStatus=d.githubSaved?'success':'partial';log(d.githubSaved?`Saved: ${t.extractedData.formattedString}`:`Sheet saved; GitHub error: ${d.githubError}` ,d.githubSaved?'success':'error')}catch(e){t.syncStatus='error';log('Sync failed: '+e.message,'error')}updateUI()}};
- $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6 ready.</div>';updateUI()}};
+ sheetBtn.onclick=async()=>{
+  const list=tickets.filter(t=>t.scanStatus==='success'&&!t.sheetSaved&&isComplete(t.extractedData));
+  if(!list.length)return;
+  sheetBtn.disabled=true;
+  for(let i=0;i<list.length;i++){
+   const t=list[i];
+   t.syncStatus='syncing';updateUI();
+   try{
+    const d=await postApi({action:'sheetOnly',filename:t.extractedData.number,formattedString:t.extractedData.formattedString});
+    t.sheetSaved=!!d.sheetSaved;
+    t.syncStatus=t.sheetSaved?'sheet-only':'error';
+    log(`Sheet only ${i+1}/${list.length}: ${t.extractedData.formattedString} ✅`,'success');
+   }catch(e){t.syncStatus='error';log('Sheet-only sync failed: '+e.message,'error')}
+   updateUI();
+  }
+ };
+
+ syncBtn.onclick=async()=>{
+  const list=tickets.filter(t=>t.scanStatus==='success'&&!t.githubSaved&&isComplete(t.extractedData));
+  if(!list.length)return;
+  syncBtn.disabled=true;
+  for(let i=0;i<list.length;i++){
+   const t=list[i];
+   t.syncStatus='syncing';updateUI();
+   try{
+    const d=await postApi({action:'sync',base64:t.base64,filename:t.extractedData.number,formattedString:t.extractedData.formattedString});
+    t.sheetSaved=!!d.sheetSaved;
+    t.githubSaved=!!d.githubSaved;
+    t.imageUrl=d.imageUrl||'';
+    t.syncStatus=t.githubSaved?'success':(t.sheetSaved?'partial':'error');
+    if(t.githubSaved) log(`Sheet + GitHub ${i+1}/${list.length}: ${t.extractedData.formattedString} ✅`,'success');
+    else if(t.sheetSaved) log(`Sheet saved, but GitHub failed: ${d.githubError||'Unknown GitHub error'}`,'error');
+    else log('Sync failed: server did not confirm Sheet save','error');
+   }catch(e){t.syncStatus='error';log('Sheet + GitHub sync failed: '+e.message,'error')}
+   updateUI();
+  }
+ };
+ $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6.2 ready.</div>';updateUI()}};
  updateUI();
 })();
 </script>

@@ -18,7 +18,7 @@
 <body class="p-3 md:p-6">
 <div class="max-w-6xl mx-auto space-y-5">
  <div class="bg-white rounded-2xl border shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6.4 FAST + AUTO-ROTATE</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
+  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6.4.1 FAST + AUTO-ROTATE</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
   <div class="flex gap-2"><button id="toggle-settings" class="px-4 py-2 rounded-lg bg-slate-100 font-semibold">Settings</button><button id="clear-btn" class="px-4 py-2 rounded-lg bg-rose-50 text-rose-600 font-semibold">Reset</button></div>
  </div>
  <div id="settings-content" class="bg-blue-50 rounded-2xl border border-blue-100">
@@ -43,7 +43,7 @@
    </div>
   </div>
  </div>
- <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6.4 FAST + AUTO-ROTATE ready. Choose Sheet Only or Sheet + GitHub.</div></div></div>
+ <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6.4.1 FAST + AUTO-ROTATE ready. Choose Sheet Only or Sheet + GitHub.</div></div></div>
 </div>
 <script>
 (() => {
@@ -104,7 +104,7 @@
  }
  function loadImg(url){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=url})}
  function rotateCanvas(src,angle){const c=document.createElement('canvas'),ctx=c.getContext('2d');if(angle===90||angle===270){c.width=src.height;c.height=src.width}else{c.width=src.width;c.height=src.height}ctx.translate(c.width/2,c.height/2);ctx.rotate(angle*Math.PI/180);ctx.drawImage(src,-src.width/2,-src.height/2);return c}
- async function normalizeTicketOrientation(t,angle){angle=((Number(angle)||0)%360+360)%360;if(!angle){t.orientationAngle=0;t.orientationFixed=true;return false}const im=await loadImg(t.previewUrl);const src=document.createElement('canvas');src.width=im.naturalWidth;src.height=im.naturalHeight;src.getContext('2d').drawImage(im,0,0);const corrected=rotateCanvas(src,angle);const dataUrl=corrected.toDataURL('image/jpeg',.9);t.previewUrl=dataUrl;t.base64=dataUrl.split(',')[1];t.orientationAngle=angle;t.orientationFixed=true;return true}
+ async function normalizeTicketOrientation(t,angle){angle=((Number(angle)||0)%360+360)%360;/* v6.4.1.1: only correct upside-down (180°) images. 0/90/270 are left unchanged. */if(angle!==180){t.orientationAngle=angle;t.orientationFixed=true;return false}const im=await loadImg(t.previewUrl);const src=document.createElement('canvas');src.width=im.naturalWidth;src.height=im.naturalHeight;src.getContext('2d').drawImage(im,0,0);const corrected=rotateCanvas(src,angle);const dataUrl=corrected.toDataURL('image/jpeg',.9);t.previewUrl=dataUrl;t.base64=dataUrl.split(',')[1];t.orientationAngle=angle;t.orientationFixed=true;return true}
  function cropCanvas(src,x1r,y1r,x2r,y2r,scale=1){const x=Math.floor(src.width*x1r),y=Math.floor(src.height*y1r),w=Math.max(1,Math.floor(src.width*(x2r-x1r))),h=Math.max(1,Math.floor(src.height*(y2r-y1r)));const c=document.createElement('canvas');c.width=Math.round(w*scale);c.height=Math.round(h*scale);c.getContext('2d').drawImage(src,x,y,w,h,0,0,c.width,c.height);return c}
  function variantCanvas(src,type,scale=1){const c=document.createElement('canvas');c.width=Math.round(src.width*scale);c.height=Math.round(src.height*scale);const ctx=c.getContext('2d');ctx.drawImage(src,0,0,c.width,c.height);if(type==='color')return c;let id=ctx.getImageData(0,0,c.width,c.height),p=id.data;for(let i=0;i<p.length;i+=4){let g=.299*p[i]+.587*p[i+1]+.114*p[i+2];if(type==='contrast')g=Math.max(0,Math.min(255,(g-128)*1.65+128));if(type==='threshold')g=g>145?255:0;if(type==='invert')g=255-g;p[i]=p[i+1]=p[i+2]=g}ctx.putImageData(id,0,0);return c}
  async function readDM(imageLike){if(!window.ZXingWASM?.readBarcodes)throw Error('ZXing-WASM did not load. Check internet/CDN.');const ctx=imageLike.getContext('2d');const id=ctx.getImageData(0,0,imageLike.width,imageLike.height);const r=await ZXingWASM.readBarcodes(id,{formats:['DataMatrix'],tryHarder:true,tryRotate:true,tryInvert:true,maxNumberOfSymbols:4});return (r||[]).map(x=>String(x.text||'').trim()).filter(Boolean)}
@@ -198,7 +198,7 @@
        const r=await decodePcStyle(t);
        t.extractedData=r.data;t.method=r.method;t.scanStatus='success';
        const rotated=await normalizeTicketOrientation(t,r.orientationAngle||0);
-       if(rotated){t.method+=` • image auto-rotated ${r.orientationAngle}°`;log(`${t.fileName}: corrected image orientation ${r.orientationAngle}° before GitHub upload`,'action')}
+       if(rotated){t.method+=` • image auto-rotated 180°`;log(`${t.fileName}: corrected upside-down image 180° before GitHub upload`,'action')}
        log(`${t.fileName}: ${r.data.formattedString} | ${t.method} | ${r.attempts} attempts`,isComplete(r.data)?'success':'error');
      }catch(e){
        t.scanStatus='error';log(`Scan Error ${t.fileName}: ${e.message}`,'error');
@@ -269,7 +269,7 @@
      updateUI();
    }
  };
- $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6.4 FAST + AUTO-ROTATE ready.</div>';updateUI()}};
+ $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6.4.1 FAST + AUTO-ROTATE ready.</div>';updateUI()}};
  updateUI();
 })();
 </script>

@@ -18,7 +18,7 @@
 <body class="p-3 md:p-6">
 <div class="max-w-6xl mx-auto space-y-5">
  <div class="bg-white rounded-2xl border shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6.2</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
+  <div><h1 class="text-2xl font-black">⚡ Fast Bulk Lottery Scanner <span class="text-blue-600">v6.3 FAST</span></h1><p class="text-sm text-slate-500">PC-style Data Matrix decoding • No Gemini • No OCR guessing</p></div>
   <div class="flex gap-2"><button id="toggle-settings" class="px-4 py-2 rounded-lg bg-slate-100 font-semibold">Settings</button><button id="clear-btn" class="px-4 py-2 rounded-lg bg-rose-50 text-rose-600 font-semibold">Reset</button></div>
  </div>
  <div id="settings-content" class="bg-blue-50 rounded-2xl border border-blue-100">
@@ -43,12 +43,12 @@
    </div>
   </div>
  </div>
- <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6.2 ready. Choose Sheet Only or Sheet + GitHub.</div></div></div>
+ <div class="bg-slate-900 rounded-2xl shadow p-4 text-slate-300 font-mono text-xs"><div id="logs" class="h-44 overflow-auto custom-scrollbar space-y-1"><div class="text-slate-500">[System] v6.3 FAST ready. Choose Sheet Only or Sheet + GitHub.</div></div></div>
 </div>
 <script>
 (() => {
  'use strict';
- const MAX_FILES=200, REQUIRED_BACKEND_VERSION='6.2.0';
+ const MAX_FILES=200, REQUIRED_BACKEND_VERSION='6.3.0';
  let tickets=[];
  const $=id=>document.getElementById(id);
  const fileInput=$('file-input'),dropZone=$('drop-zone'),gallery=$('gallery-grid'),results=$('results-list'),scanBtn=$('scan-all-btn'),sheetBtn=$('sync-sheet-btn'),syncBtn=$('sync-all-btn'),webUrl=$('webapp-url');
@@ -109,50 +109,158 @@
  async function readDM(imageLike){if(!window.ZXingWASM?.readBarcodes)throw Error('ZXing-WASM did not load. Check internet/CDN.');const ctx=imageLike.getContext('2d');const id=ctx.getImageData(0,0,imageLike.width,imageLike.height);const r=await ZXingWASM.readBarcodes(id,{formats:['DataMatrix'],tryHarder:true,tryRotate:true,tryInvert:true,maxNumberOfSymbols:4});return (r||[]).map(x=>String(x.text||'').trim()).filter(Boolean)}
  function parseDM(text){const m=String(text||'').match(DM_RE);if(!m)return null;const g=m.groups;return {yy:g.year,period:g.period,set:g.set,number:g.number,suffix:g.suffix||'',formattedString:`${g.year}-${g.period}-${g.set}-${g.number}-${g.suffix||'????'}`,raw:text}}
  function filenameNumber(name){const m=String(name).replace(/\.[^.]+$/,'').match(/(?:^|\D)(\d{6})(?:\D|$)/)||String(name).match(/(\d{6})/);return m?m[1]:''}
- async function decodePcStyle(t){const im=await loadImg(t.previewUrl);const base=document.createElement('canvas');base.width=im.naturalWidth;base.height=im.naturalHeight;base.getContext('2d').drawImage(im,0,0);const rotations=[0,90,180,270];const boxes=[[.34,.10,.58,.46],[.32,.08,.60,.48],[.35,.12,.57,.44]];const votes=new Map(),examples=new Map();let attempts=0;
- const record=async c=>{attempts++;try{for(const text of await readDM(c)){const p=parseDM(text);if(!p)continue;const key=p.formattedString;votes.set(key,(votes.get(key)||0)+1);examples.set(key,p);if((votes.get(key)||0)>=2)return p}}catch{}return null};
- for(const ang of rotations){const rot=rotateCanvas(base,ang);for(const b of boxes){const crop=cropCanvas(rot,...b,1);for(const [type,scale] of [['color',1],['gray',1],['gray',2],['contrast',2],['threshold',3],['invert',2]]){const v=variantCanvas(crop,type,scale);const stable=await record(v);if(stable){return {data:stable,method:`Data Matrix (${ang}°, ${votes.get(stable.formattedString)} confirmations)`,attempts}}}}const whole=variantCanvas(rot,'gray',1);const stable=await record(whole);if(stable)return {data:stable,method:`Data Matrix whole image (${ang}°)`,attempts}}
- if(votes.size){const ranked=[...votes.entries()].sort((a,b)=>b[1]-a[1]);const p=examples.get(ranked[0][0]);return {data:p,method:`Data Matrix single read • REVIEW (${ranked[0][1]} vote)`,attempts}}
- const num=filenameNumber(t.fileName);return {data:{yy:'69',period:'',set:'',number:num,suffix:'',formattedString:`69-??-??-${num||'??????'}-????`,raw:''},method:'Data Matrix not decoded • filename fallback',attempts}}
- scanBtn.onclick=async()=>{const list=tickets.filter(t=>['pending','error'].includes(t.scanStatus));scanBtn.disabled=true;for(let i=0;i<list.length;i++){const t=list[i];t.scanStatus='scanning';$('scan-btn-text').textContent=`Data Matrix ${i+1}/${list.length}`;updateUI();try{const r=await decodePcStyle(t);t.extractedData=r.data;t.method=r.method;t.scanStatus='success';log(`${t.fileName}: ${r.data.formattedString} | ${r.method} | ${r.attempts} attempts`,isComplete(r.data)?'success':'error')}catch(e){t.scanStatus='error';log(`Scan Error ${t.fileName}: ${e.message}`,'error')}updateUI()}$('scan-btn-text').textContent='Decode Data Matrix';updateUI()};
- sheetBtn.onclick=async()=>{
-  const list=tickets.filter(t=>t.scanStatus==='success'&&!t.sheetSaved&&isComplete(t.extractedData));
-  if(!list.length)return;
-  sheetBtn.disabled=true;
-  for(let i=0;i<list.length;i++){
-   const t=list[i];
-   t.syncStatus='syncing';updateUI();
-   try{
-    const d=await postApi({action:'sheetOnly',filename:t.extractedData.number,formattedString:t.extractedData.formattedString});
-    t.sheetSaved=!!d.sheetSaved;
-    t.syncStatus=t.sheetSaved?'sheet-only':'error';
-    log(`Sheet only ${i+1}/${list.length}: ${t.extractedData.formattedString} ✅`,'success');
-   }catch(e){t.syncStatus='error';log('Sheet-only sync failed: '+e.message,'error')}
-   updateUI();
+ async function decodePcStyle(t){
+  const im=await loadImg(t.previewUrl);
+  const base=document.createElement('canvas');
+  base.width=im.naturalWidth;base.height=im.naturalHeight;
+  base.getContext('2d').drawImage(im,0,0);
+
+  const rotations=[0,90,180,270];
+  const boxes=[[.34,.10,.58,.46],[.32,.08,.60,.48],[.35,.12,.57,.44]];
+  const votes=new Map(),examples=new Map();let attempts=0;
+
+  const record=async c=>{
+    attempts++;
+    try{
+      for(const text of await readDM(c)){
+        const p=parseDM(text); if(!p) continue;
+        const key=p.formattedString;
+        votes.set(key,(votes.get(key)||0)+1); examples.set(key,p);
+        if((votes.get(key)||0)>=2)return p;
+      }
+    }catch{}
+    return null;
+  };
+
+  // Stage 1: fast variants first (same idea as the desktop app).
+  for(const ang of rotations){
+    const rot=rotateCanvas(base,ang);
+    for(const b of boxes){
+      const crop=cropCanvas(rot,...b,1);
+      for(const [type,scale] of [['color',1],['gray',1],['gray',2]]){
+        const stable=await record(variantCanvas(crop,type,scale));
+        if(stable)return {data:stable,method:`Data Matrix FAST (${ang}°, ${votes.get(stable.formattedString)} confirmations)`,attempts};
+      }
+    }
+    const stable=await record(variantCanvas(rot,'gray',1));
+    if(stable)return {data:stable,method:`Data Matrix whole image (${ang}°)`,attempts};
   }
+
+  // Stage 2: heavy rescue only for difficult images.
+  for(const ang of rotations){
+    const rot=rotateCanvas(base,ang);
+    for(const b of boxes.slice(0,2)){
+      const crop=cropCanvas(rot,...b,1);
+      for(const [type,scale] of [['contrast',2],['threshold',3],['invert',2]]){
+        const stable=await record(variantCanvas(crop,type,scale));
+        if(stable)return {data:stable,method:`Data Matrix RESCUE (${ang}°, ${votes.get(stable.formattedString)} confirmations)`,attempts};
+      }
+    }
+  }
+
+  if(votes.size){
+    const ranked=[...votes.entries()].sort((a,b)=>b[1]-a[1]);
+    const p=examples.get(ranked[0][0]);
+    return {data:p,method:`Data Matrix single read • REVIEW (${ranked[0][1]} vote)`,attempts};
+  }
+  const num=filenameNumber(t.fileName);
+  return {data:{yy:'69',period:'',set:'',number:num,suffix:'',formattedString:`69-??-??-${num||'??????'}-????`,raw:''},method:'Data Matrix not decoded • filename fallback',attempts};
+ }
+
+ async function runPool(items,worker,limit=3){
+   let next=0;
+   const runners=Array.from({length:Math.min(limit,items.length)},async()=>{
+     while(true){
+       const i=next++;
+       if(i>=items.length)return;
+       await worker(items[i],i);
+     }
+   });
+   await Promise.all(runners);
+ }
+
+ scanBtn.onclick=async()=>{
+   const list=tickets.filter(t=>['pending','error'].includes(t.scanStatus));
+   if(!list.length)return;
+   scanBtn.disabled=true;
+   let done=0;
+   $('scan-btn-text').textContent=`Data Matrix 0/${list.length}`;
+   await runPool(list,async(t)=>{
+     t.scanStatus='scanning';updateUI();
+     try{
+       const r=await decodePcStyle(t);
+       t.extractedData=r.data;t.method=r.method;t.scanStatus='success';
+       log(`${t.fileName}: ${r.data.formattedString} | ${r.method} | ${r.attempts} attempts`,isComplete(r.data)?'success':'error');
+     }catch(e){
+       t.scanStatus='error';log(`Scan Error ${t.fileName}: ${e.message}`,'error');
+     }
+     done++; $('scan-btn-text').textContent=`Data Matrix ${done}/${list.length}`; updateUI();
+   },3);
+   $('scan-btn-text').textContent='Decode Data Matrix';updateUI();
+ };
+
+ function batchTicketPayload(t,withImage){
+   const x={id:String(t.id),filename:t.extractedData.number,formattedString:t.extractedData.formattedString};
+   if(withImage)x.base64=t.base64;
+   return x;
+ }
+
+ async function postBatch(action,items){
+   return await postApi({action,tickets:items});
+ }
+
+ sheetBtn.onclick=async()=>{
+   const list=tickets.filter(t=>t.scanStatus==='success'&&!t.sheetSaved&&isComplete(t.extractedData));
+   if(!list.length)return;
+   sheetBtn.disabled=true;
+   list.forEach(t=>{t.syncStatus='syncing'});updateUI();
+   try{
+     const d=await postBatch('sheetOnlyBatch',list.map(t=>batchTicketPayload(t,false)));
+     const byId=new Map((d.results||[]).map(r=>[String(r.id),r]));
+     for(const t of list){
+       const r=byId.get(String(t.id));
+       if(r?.sheetSaved){t.sheetSaved=true;t.syncStatus='sheet-only'}
+       else {t.syncStatus='error'}
+     }
+     log(`FAST Sheet sync: ${d.savedCount||0}/${list.length} tickets saved in one request ✅`,'success');
+   }catch(e){
+     list.forEach(t=>t.syncStatus='error');
+     log('FAST Sheet batch failed: '+e.message,'error');
+   }
+   updateUI();
  };
 
  syncBtn.onclick=async()=>{
-  const list=tickets.filter(t=>t.scanStatus==='success'&&!t.githubSaved&&isComplete(t.extractedData));
-  if(!list.length)return;
-  syncBtn.disabled=true;
-  for(let i=0;i<list.length;i++){
-   const t=list[i];
-   t.syncStatus='syncing';updateUI();
-   try{
-    const d=await postApi({action:'sync',base64:t.base64,filename:t.extractedData.number,formattedString:t.extractedData.formattedString});
-    t.sheetSaved=!!d.sheetSaved;
-    t.githubSaved=!!d.githubSaved;
-    t.imageUrl=d.imageUrl||'';
-    t.syncStatus=t.githubSaved?'success':(t.sheetSaved?'partial':'error');
-    if(t.githubSaved) log(`Sheet + GitHub ${i+1}/${list.length}: ${t.extractedData.formattedString} ✅`,'success');
-    else if(t.sheetSaved) log(`Sheet saved, but GitHub failed: ${d.githubError||'Unknown GitHub error'}`,'error');
-    else log('Sync failed: server did not confirm Sheet save','error');
-   }catch(e){t.syncStatus='error';log('Sheet + GitHub sync failed: '+e.message,'error')}
-   updateUI();
-  }
+   const list=tickets.filter(t=>t.scanStatus==='success'&&!t.githubSaved&&isComplete(t.extractedData));
+   if(!list.length)return;
+   syncBtn.disabled=true;
+   list.forEach(t=>{t.syncStatus='syncing'});updateUI();
+
+   const CHUNK=10;
+   let completed=0;
+   for(let offset=0;offset<list.length;offset+=CHUNK){
+     const chunk=list.slice(offset,offset+CHUNK);
+     try{
+       const d=await postBatch('syncBatch',chunk.map(t=>batchTicketPayload(t,true)));
+       const byId=new Map((d.results||[]).map(r=>[String(r.id),r]));
+       for(const t of chunk){
+         const r=byId.get(String(t.id));
+         if(r){
+           t.sheetSaved=!!r.sheetSaved;t.githubSaved=!!r.githubSaved;
+           t.imageUrl=r.imageUrl||'';
+           t.syncStatus=t.githubSaved?'success':(t.sheetSaved?'partial':'error');
+         }else t.syncStatus='error';
+       }
+       completed+=chunk.length;
+       log(`FAST Sheet + GitHub: ${completed}/${list.length} processed`,'success');
+     }catch(e){
+       chunk.forEach(t=>t.syncStatus='error');
+       log('FAST sync batch failed: '+e.message,'error');
+     }
+     updateUI();
+   }
  };
- $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6.2 ready.</div>';updateUI()}};
+ $('clear-btn').onclick=()=>{if(confirm('Clear current session?')){tickets=[];$('logs').innerHTML='<div class="text-slate-500">[System] v6.3 FAST ready.</div>';updateUI()}};
  updateUI();
 })();
 </script>

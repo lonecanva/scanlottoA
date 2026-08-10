@@ -69,7 +69,7 @@ body{background:#f1f5f9;color:#0f172a}.hide-scrollbar::-webkit-scrollbar{display
 <script>
 (() => {
 'use strict';
-const $=id=>document.getElementById(id), REQUIRED='7.0.0';
+const $=id=>document.getElementById(id), REQUIRED='7.1.0';
 let records=[], currentTab='list';
 const webapp=$('webappUrl'); webapp.value=localStorage.getItem('lotteryWebAppUrl')||'';
 $('settingsBtn').onclick=()=> $('settingsPanel').classList.toggle('hidden');
@@ -79,7 +79,10 @@ async function api(action, data={}){
   const url=webapp.value.trim(); if(!url) throw Error('Set your Apps Script /exec URL in Settings.');
   const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...data}),redirect:'follow'});
   const txt=await r.text(); let j; try{j=JSON.parse(txt)}catch{throw Error('Invalid Apps Script response: '+txt.slice(0,160))}
-  if(j.status==='error') throw Error(j.message||'Server error'); return j;
+  if(j.status==='error') {
+    if(String(j.message||'').includes('Unknown action: portalSearch')) throw Error('Your Apps Script deployment is still the old scanner backend. Replace Code.gs with v7.1 and Deploy → Manage deployments → Edit → New version → Deploy.');
+    throw Error(j.message||'Server error');
+  } return j;
 }
 function msg(text,ok=true){const b=$('messageBox');b.textContent=text;b.className=`mx-4 mt-4 p-3 rounded-lg text-sm font-bold text-center ${ok?'bg-emerald-100 text-emerald-800':'bg-red-100 text-red-800'}`;b.classList.remove('hidden');setTimeout(()=>b.classList.add('hidden'),5000)}
 $('testBtn').onclick=async()=>{try{const d=await api('ping');localStorage.setItem('lotteryWebAppUrl',webapp.value.trim());if(d.backendVersion!==REQUIRED)throw Error(`Need backend ${REQUIRED}; got ${d.backendVersion||'unknown'}. Redeploy Code.gs as New version.`);$('apiStatus').textContent=`✅ Connected v${d.backendVersion} • ${d.sheetName} • GitHub ${d.githubTokenFound?'OK':'TOKEN MISSING'}`;$('apiStatus').className='text-xs mt-2 text-emerald-600 font-bold'}catch(e){$('apiStatus').textContent='❌ '+e.message;$('apiStatus').className='text-xs mt-2 text-red-600 font-bold'}};
@@ -99,7 +102,10 @@ function renderGallery(id,data,showName){const g=$(id);if(!data.length){g.innerH
 function renderWins(data){const g=$('winsGrid');if(!data.length){g.innerHTML='<div class="col-span-full p-10 text-center text-slate-400">No winning tickets.</div>';return}g.innerHTML=data.map(r=>`<div class="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-300 rounded-xl p-3 flex gap-3 items-center">${photo(r,'w-24 h-20')}<div class="flex-1"><div class="font-mono text-xl font-black">${esc(r.lotteryNumber)}</div><div class="font-bold">${esc(r.customerName||'Unassigned')}</div><div class="text-yellow-700 text-xl font-black">🏆 ${prize(r)}</div>${r.specialPrizeName?`<div class="text-xs text-yellow-700">${esc(r.specialPrizeName)}</div>`:''}</div><button class="editBtn text-blue-600 font-bold" data-row="${r.rowNumber}">Edit</button></div>`).join('')}
 function bindDynamic(){document.querySelectorAll('.editBtn,.editCard').forEach(x=>x.onclick=e=>{if(e.target.matches('img[data-photo]'))return;openEdit(Number(x.dataset.row))});document.querySelectorAll('img[data-photo]').forEach(x=>x.onclick=e=>{e.stopPropagation();$('largeImage').src=x.dataset.photo;$('imageModal').classList.remove('hidden')})}
 
-async function load(){const btn=$('refreshBtn'),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='⏳ Loading...';try{const r=await api('portalSearch',{query:{customerName:'',lotteryNumber:'',drawDate:'',payment:''}});if(!r.success)throw Error(r.message||'Search failed');records=r.data||[];render()}catch(e){msg(e.message,false)}finally{btn.disabled=false;btn.innerHTML=old}}
+async function load(){const btn=$('refreshBtn'),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='⏳ Loading...';try{const r=await api('portalSearch',{query:{customerName:'',lotteryNumber:'',drawDate:'',payment:''}});if(!r.success)throw Error(r.message||'Search failed');records=r.data||[];render();
+    if((r.githubImported||0)>0 || (r.githubLinked||0)>0){
+      msg(`GitHub images loaded: ${r.githubImageCount||0}. Imported ${r.githubImported||0} new ticket(s), linked ${r.githubLinked||0} existing row(s).`,true);
+    }}catch(e){msg(e.message,false)}finally{btn.disabled=false;btn.innerHTML=old}}
 
 function toLocalDT(v){const d=v?new Date(v):new Date();if(isNaN(d))return '';const off=d.getTimezoneOffset()*60000;return new Date(d-off).toISOString().slice(0,16)}
 function toDateInput(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}

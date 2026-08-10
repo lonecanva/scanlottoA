@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thai Lottery Management Portal</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+body{background:#f1f5f9;color:#0f172a}.hide-scrollbar::-webkit-scrollbar{display:none}.hide-scrollbar{scrollbar-width:none}.spinner{width:18px;height:18px;border:3px solid rgba(255,255,255,.35);border-top-color:currentColor;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.modal{background:rgba(15,23,42,.65);backdrop-filter:blur(3px)}.ticket-stack{margin-top:-38%}.ticket-stack:first-child{margin-top:0}
+</style>
+</head>
+<body class="p-0 sm:p-5">
+<div class="max-w-6xl mx-auto bg-white sm:rounded-2xl shadow-xl overflow-hidden min-h-screen sm:min-h-0">
+  <div class="bg-blue-600 p-4 sm:p-6 text-white flex flex-col md:flex-row justify-between items-center gap-3">
+    <div><h1 class="text-2xl font-black">Thai Lottery Management Portal</h1><p class="text-blue-100 text-sm">GitHub Pages + Google Sheet + GitHub Photos</p></div>
+    <div class="flex gap-2 flex-wrap justify-center"><a href="index.html" class="bg-white/15 border border-white/30 px-3 py-2 rounded-lg font-bold">⚡ Scanner</a><button id="settingsBtn" class="bg-white/15 border border-white/30 px-3 py-2 rounded-lg font-bold">⚙ Settings</button><select id="langSelector" class="text-slate-800 rounded-lg px-3 py-2"><option value="en">English</option><option value="my">မြန်မာ</option><option value="th">ไทย</option><option value="zh">中文</option></select></div>
+  </div>
+
+  <div id="settingsPanel" class="hidden bg-blue-50 border-b border-blue-100 p-4">
+    <label class="text-xs font-bold text-blue-800">GOOGLE APPS SCRIPT WEB APP URL</label>
+    <div class="flex gap-2 mt-1"><input id="webappUrl" class="flex-1 px-3 py-2 rounded-lg border border-blue-200" placeholder="https://script.google.com/macros/s/.../exec"><button id="testBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">Test</button></div>
+    <div id="apiStatus" class="text-xs mt-2 text-slate-500">Not tested</div>
+  </div>
+
+  <div class="flex border-b bg-slate-50 overflow-x-auto hide-scrollbar">
+    <button class="tabBtn flex-1 min-w-[120px] py-3 border-b-2 border-blue-600 text-blue-600 font-bold" data-tab="list">📋 List View</button>
+    <button class="tabBtn flex-1 min-w-[150px] py-3 border-b-2 border-transparent text-slate-500" data-tab="unassigned">🖼️ Unassigned <span id="unassignedCount" class="bg-red-500 text-white text-[10px] px-1.5 rounded-full"></span></button>
+    <button class="tabBtn flex-1 min-w-[150px] py-3 border-b-2 border-transparent text-slate-500" data-tab="assigned">👥 Assigned <span id="assignedCount" class="bg-emerald-500 text-white text-[10px] px-1.5 rounded-full"></span></button>
+    <button class="tabBtn flex-1 min-w-[130px] py-3 border-b-2 border-transparent text-slate-500" data-tab="wins">🏆 Win Prizes <span id="winCount" class="bg-yellow-500 text-white text-[10px] px-1.5 rounded-full"></span></button>
+  </div>
+
+  <div id="messageBox" class="hidden mx-4 mt-4 p-3 rounded-lg text-sm font-bold text-center"></div>
+
+  <div class="m-4 sm:m-6 bg-slate-100 border rounded-xl p-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div><label class="text-xs font-bold">Draw Date</label><input type="date" id="searchDate" class="w-full mt-1 px-3 py-2 rounded-lg border"></div>
+      <div><label class="text-xs font-bold">Customer / Contact</label><input id="searchName" class="w-full mt-1 px-3 py-2 rounded-lg border" placeholder="Type to filter..."></div>
+      <div><label class="text-xs font-bold">Lottery Number</label><input id="searchNumber" maxlength="6" inputmode="numeric" class="w-full mt-1 px-3 py-2 rounded-lg border" placeholder="012345"></div>
+      <div><label class="text-xs font-bold">Payment</label><select id="searchPayment" class="w-full mt-1 px-3 py-2 rounded-lg border"><option value="">All Payments</option><option>မရှင်းသေး</option><option>Cash</option><option>Kpay</option><option>Thai Baht</option></select></div>
+    </div>
+    <div class="mt-3 flex justify-between gap-2"><button id="clearFilters" class="text-blue-600 font-bold">Clear Filters</button><button id="refreshBtn" class="bg-slate-800 text-white px-5 py-2 rounded-lg font-bold">🔄 Fetch Data</button></div>
+  </div>
+
+  <main class="p-4 sm:p-6 pt-0">
+    <section id="view-list" class="view"><div class="overflow-x-auto rounded-xl border"><table class="min-w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-3 text-left">Date</th><th class="p-3 text-left">Customer / Contact</th><th class="p-3 text-left">Lottery</th><th class="p-3 text-center">Photo / Action</th></tr></thead><tbody id="listBody"></tbody></table></div></section>
+
+    <section id="view-unassigned" class="view hidden"><div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-black">Unassigned Tickets</h2><p class="text-sm text-slate-500">Click a ticket to assign a customer.</p></div><button class="captureBtn bg-emerald-600 text-white px-3 py-2 rounded-lg font-bold" data-target="unassignedGrid">📷 Copy Layout</button></div><div id="unassignedGrid" class="grid grid-cols-2 md:grid-cols-3 gap-3 bg-slate-100 p-4 rounded-xl"></div></section>
+
+    <section id="view-assigned" class="view hidden"><div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-black">Assigned Tickets</h2><p class="text-sm text-slate-500">Use Customer filter to narrow the gallery.</p></div><button class="captureBtn bg-emerald-600 text-white px-3 py-2 rounded-lg font-bold" data-target="assignedGrid">📷 Copy Layout</button></div><div id="assignedGrid" class="grid grid-cols-2 md:grid-cols-3 gap-3 bg-emerald-50 p-4 rounded-xl"></div></section>
+
+    <section id="view-wins" class="view hidden"><div class="flex justify-between items-center mb-4"><div><h2 class="text-xl font-black text-yellow-700">🏆 Win Prizes</h2><p class="text-sm text-slate-500">Tickets with a prize amount.</p></div><button class="captureBtn bg-yellow-500 text-white px-3 py-2 rounded-lg font-bold" data-target="winsGrid">📷 Copy Layout</button></div><div id="winsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div></section>
+  </main>
+</div>
+
+<!-- Edit modal -->
+<div id="editModal" class="hidden fixed inset-0 z-50 modal flex items-center justify-center p-4 overflow-auto"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-8"><div class="bg-blue-600 p-4 text-white flex justify-between"><b>Edit Record</b><button id="closeEdit">✕</button></div><form id="editForm" class="p-5 space-y-3">
+<input type="hidden" id="editRow">
+<div class="grid grid-cols-2 gap-3"><div><label class="text-xs font-bold">Timestamp</label><input type="datetime-local" id="editTimestamp" class="w-full border rounded p-2"></div><div><label class="text-xs font-bold">Draw Date</label><input type="date" id="editDrawDate" class="w-full border rounded p-2"></div></div>
+<div><label class="text-xs font-bold">Customer Name</label><input id="editCustomer" class="w-full border rounded p-2"></div>
+<div class="grid grid-cols-2 gap-3"><div><label class="text-xs font-bold">Social Platform</label><input id="editPlatform" class="w-full border rounded p-2"></div><div><label class="text-xs font-bold">Social ID / Phone</label><input id="editContact" class="w-full border rounded p-2"></div></div>
+<div class="grid grid-cols-2 gap-3"><div><label class="text-xs font-bold">Lottery Number</label><input id="editNumber" readonly class="w-full border rounded p-2 bg-slate-100 font-mono"></div><div><label class="text-xs font-bold">Payment</label><select id="editPayment" class="w-full border rounded p-2"><option>မရှင်းသေး</option><option>Cash</option><option>Kpay</option><option>Thai Baht</option></select></div></div>
+<div><label class="text-xs font-bold">Replace Ticket Photo → GitHub</label><input type="file" id="editPhoto" accept="image/*" class="w-full text-sm"></div>
+<div class="flex justify-between border-t pt-4"><button type="button" id="deleteBtn" class="text-red-600 font-bold">Delete Record</button><div class="flex gap-2"><button type="button" id="cancelEdit" class="px-4 py-2 bg-slate-100 rounded-lg">Cancel</button><button id="saveEdit" class="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold">Save Changes</button></div></div>
+</form></div></div>
+
+<div id="imageModal" class="hidden fixed inset-0 z-[60] modal flex items-center justify-center p-4"><button id="closeImage" class="absolute top-4 right-4 text-white text-3xl">✕</button><img id="largeImage" class="max-w-[95vw] max-h-[90vh] object-contain rounded-xl shadow-2xl bg-white"></div>
+
+<script>
+(() => {
+'use strict';
+const $=id=>document.getElementById(id), REQUIRED='7.0.0';
+let records=[], currentTab='list';
+const webapp=$('webappUrl'); webapp.value=localStorage.getItem('lotteryWebAppUrl')||'';
+$('settingsBtn').onclick=()=> $('settingsPanel').classList.toggle('hidden');
+webapp.onchange=()=>localStorage.setItem('lotteryWebAppUrl',webapp.value.trim());
+
+async function api(action, data={}){
+  const url=webapp.value.trim(); if(!url) throw Error('Set your Apps Script /exec URL in Settings.');
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...data}),redirect:'follow'});
+  const txt=await r.text(); let j; try{j=JSON.parse(txt)}catch{throw Error('Invalid Apps Script response: '+txt.slice(0,160))}
+  if(j.status==='error') throw Error(j.message||'Server error'); return j;
+}
+function msg(text,ok=true){const b=$('messageBox');b.textContent=text;b.className=`mx-4 mt-4 p-3 rounded-lg text-sm font-bold text-center ${ok?'bg-emerald-100 text-emerald-800':'bg-red-100 text-red-800'}`;b.classList.remove('hidden');setTimeout(()=>b.classList.add('hidden'),5000)}
+$('testBtn').onclick=async()=>{try{const d=await api('ping');localStorage.setItem('lotteryWebAppUrl',webapp.value.trim());if(d.backendVersion!==REQUIRED)throw Error(`Need backend ${REQUIRED}; got ${d.backendVersion||'unknown'}. Redeploy Code.gs as New version.`);$('apiStatus').textContent=`✅ Connected v${d.backendVersion} • ${d.sheetName} • GitHub ${d.githubTokenFound?'OK':'TOKEN MISSING'}`;$('apiStatus').className='text-xs mt-2 text-emerald-600 font-bold'}catch(e){$('apiStatus').textContent='❌ '+e.message;$('apiStatus').className='text-xs mt-2 text-red-600 font-bold'}};
+
+function prize(r){const n=Number(r.totalPrize)||((Number(r.simplePrize)||0)+(Number(r.specialPrize)||0));return n>0?n:null}
+function fmtDate(v,withTime=false){if(!v)return '—';const d=new Date(v);if(isNaN(d))return String(v);return withTime?d.toLocaleString():d.toLocaleDateString()}
+function esc(v){return String(v??'').replace(/[&<>\'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function photo(r,cls='w-16 h-16'){if(!r.photoUrl)return '<span class="text-xs text-slate-400">No Photo</span>';return `<img crossorigin="anonymous" src="${esc(r.photoUrl)}" class="${cls} object-cover rounded-lg border cursor-pointer bg-white" data-photo="${esc(r.photoUrl)}">`}
+function paymentBadge(p){const map={'Cash':'bg-emerald-100 text-emerald-700','Kpay':'bg-blue-100 text-blue-700','Thai Baht':'bg-purple-100 text-purple-700','မရှင်းသေး':'bg-red-100 text-red-700'};return p?`<span class="text-[10px] px-2 py-0.5 rounded ${map[p]||'bg-slate-100'}">${esc(p)}</span>`:''}
+
+function filtered(){const name=$('searchName').value.toLowerCase().trim(),num=$('searchNumber').value.trim(),pay=$('searchPayment').value,date=$('searchDate').value;return records.filter(r=>{const matchName=!name||[r.customerName,r.socialPlatform,r.socialContact].some(x=>String(x||'').toLowerCase().includes(name));const matchNum=!num||String(r.lotteryNumber||'').includes(num);const matchPay=!pay||r.payment===pay;let matchDate=true;if(date){const d=new Date(r.drawDate);matchDate=!isNaN(d)&&`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`===date}return matchName&&matchNum&&matchPay&&matchDate})}
+function sortTickets(arr){return [...arr].sort((a,b)=>String(a.lotteryNumber||'').slice(-3).localeCompare(String(b.lotteryNumber||'').slice(-3),undefined,{numeric:true})||String(a.lotteryNumber||'').localeCompare(String(b.lotteryNumber||''),undefined,{numeric:true}))}
+
+function render(){const data=filtered();renderList(data);const un=sortTickets(data.filter(r=>!String(r.customerName||'').trim()&&r.lotteryNumber));const as=sortTickets(data.filter(r=>String(r.customerName||'').trim()&&r.lotteryNumber));const wins=data.filter(r=>prize(r)).sort((a,b)=>prize(b)-prize(a));$('unassignedCount').textContent=un.length||'';$('assignedCount').textContent=as.length||'';$('winCount').textContent=wins.length||'';renderGallery('unassignedGrid',un,false);renderGallery('assignedGrid',as,true);renderWins(wins);bindDynamic()}
+function renderList(data){const b=$('listBody');if(!data.length){b.innerHTML='<tr><td colspan="4" class="p-8 text-center text-slate-400">No records found.</td></tr>';return}b.innerHTML=data.map(r=>`<tr class="border-t hover:bg-blue-50"><td class="p-3 align-top"><div class="font-semibold">${esc(fmtDate(r.timestamp,true))}</div><div class="text-xs text-slate-500 mt-1">Draw: ${esc(fmtDate(r.drawDate))}</div></td><td class="p-3 align-top"><div class="font-bold">${esc(r.customerName||'Unassigned')}</div><div class="text-xs text-slate-500">${esc(r.socialPlatform||'')} ${esc(r.socialContact||'')}</div><div class="mt-1">${paymentBadge(r.payment)}</div></td><td class="p-3 align-top"><div class="font-mono text-lg font-black text-blue-600">${esc(r.lotteryNumber)}</div><div class="text-[10px] text-slate-400">${esc(r.oriLotteryNumber)}</div>${prize(r)?`<div class="mt-1 text-yellow-700 font-bold">🏆 ${prize(r)}</div>`:''}</td><td class="p-3 text-center align-top"><div class="flex flex-col items-center gap-2">${photo(r,'w-14 h-14')}<button class="editBtn text-xs text-blue-600 font-bold border border-blue-200 rounded px-2 py-1" data-row="${r.rowNumber}">Edit</button></div></td></tr>`).join('')}
+function renderGallery(id,data,showName){const g=$(id);if(!data.length){g.innerHTML='<div class="col-span-full p-10 text-center text-slate-400">No tickets found.</div>';return}g.innerHTML=data.map(r=>`<div class="bg-white rounded-xl border shadow-sm p-2 cursor-pointer editCard" data-row="${r.rowNumber}">${photo(r,'w-full aspect-[4/3]')}<div class="mt-2 flex justify-between items-center gap-2"><span class="font-mono font-black text-blue-700">${esc(r.lotteryNumber)}</span>${prize(r)?`<span class="text-xs bg-yellow-100 text-yellow-700 rounded px-1.5">🏆 ${prize(r)}</span>`:''}</div>${showName?`<div class="text-xs font-bold text-emerald-700 truncate">${esc(r.customerName)}</div>`:''}</div>`).join('')}
+function renderWins(data){const g=$('winsGrid');if(!data.length){g.innerHTML='<div class="col-span-full p-10 text-center text-slate-400">No winning tickets.</div>';return}g.innerHTML=data.map(r=>`<div class="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-300 rounded-xl p-3 flex gap-3 items-center">${photo(r,'w-24 h-20')}<div class="flex-1"><div class="font-mono text-xl font-black">${esc(r.lotteryNumber)}</div><div class="font-bold">${esc(r.customerName||'Unassigned')}</div><div class="text-yellow-700 text-xl font-black">🏆 ${prize(r)}</div>${r.specialPrizeName?`<div class="text-xs text-yellow-700">${esc(r.specialPrizeName)}</div>`:''}</div><button class="editBtn text-blue-600 font-bold" data-row="${r.rowNumber}">Edit</button></div>`).join('')}
+function bindDynamic(){document.querySelectorAll('.editBtn,.editCard').forEach(x=>x.onclick=e=>{if(e.target.matches('img[data-photo]'))return;openEdit(Number(x.dataset.row))});document.querySelectorAll('img[data-photo]').forEach(x=>x.onclick=e=>{e.stopPropagation();$('largeImage').src=x.dataset.photo;$('imageModal').classList.remove('hidden')})}
+
+async function load(){const btn=$('refreshBtn'),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='⏳ Loading...';try{const r=await api('portalSearch',{query:{customerName:'',lotteryNumber:'',drawDate:'',payment:''}});if(!r.success)throw Error(r.message||'Search failed');records=r.data||[];render()}catch(e){msg(e.message,false)}finally{btn.disabled=false;btn.innerHTML=old}}
+
+function toLocalDT(v){const d=v?new Date(v):new Date();if(isNaN(d))return '';const off=d.getTimezoneOffset()*60000;return new Date(d-off).toISOString().slice(0,16)}
+function toDateInput(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function openEdit(row){const r=records.find(x=>x.rowNumber===row);if(!r)return;$('editRow').value=row;$('editTimestamp').value=toLocalDT(r.timestamp);$('editDrawDate').value=toDateInput(r.drawDate);$('editCustomer').value=r.customerName||'';$('editPlatform').value=r.socialPlatform||'';$('editContact').value=r.socialContact||'';$('editNumber').value=r.lotteryNumber||'';$('editPayment').value=r.payment||'မရှင်းသေး';$('editPhoto').value='';$('editModal').classList.remove('hidden')}
+function closeEdit(){$('editModal').classList.add('hidden')}
+$('closeEdit').onclick=$('cancelEdit').onclick=closeEdit;
+
+function compress(file,maxWidth=1200,quality=.85){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=e=>{const im=new Image();im.onerror=rej;im.onload=()=>{const s=Math.min(1,maxWidth/im.width),c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);const u=c.toDataURL('image/jpeg',quality);res({data:u.split(',')[1],mimeType:'image/jpeg',name:file.name.replace(/\.[^.]+$/,'.jpg')})};im.src=e.target.result};fr.readAsDataURL(file)})}
+$('editForm').onsubmit=async e=>{e.preventDefault();const btn=$('saveEdit'),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='Saving...';try{let newPhoto=null;if($('editPhoto').files[0])newPhoto=await compress($('editPhoto').files[0]);const data={rowNumber:Number($('editRow').value),timestamp:$('editTimestamp').value,drawDate:$('editDrawDate').value,customerName:$('editCustomer').value,socialPlatform:$('editPlatform').value,socialContact:$('editContact').value,payment:$('editPayment').value,newPhoto};const r=await api('portalUpdate',{data});if(!r.success)throw Error(r.message||'Update failed');closeEdit();msg('Record updated successfully.',true);await load()}catch(err){msg(err.message,false)}finally{btn.disabled=false;btn.innerHTML=old}}
+$('deleteBtn').onclick=async()=>{const row=Number($('editRow').value);if(!confirm('Delete this Sheet row? The GitHub image will not be deleted.'))return;try{const r=await api('portalDelete',{rowNumber:row});if(!r.success)throw Error(r.message||'Delete failed');closeEdit();msg('Record deleted.',true);await load()}catch(e){msg(e.message,false)}};
+
+$('refreshBtn').onclick=load;['searchName','searchNumber'].forEach(id=>$(id).oninput=render);['searchDate','searchPayment'].forEach(id=>$(id).onchange=render);$('searchNumber').oninput=e=>{e.target.value=e.target.value.replace(/\D/g,'').slice(0,6);render()};$('clearFilters').onclick=()=>{$('searchDate').value='';$('searchName').value='';$('searchNumber').value='';$('searchPayment').value='';render()};
+
+document.querySelectorAll('.tabBtn').forEach(btn=>btn.onclick=()=>{currentTab=btn.dataset.tab;document.querySelectorAll('.tabBtn').forEach(b=>{b.classList.toggle('border-blue-600',b===btn);b.classList.toggle('text-blue-600',b===btn);b.classList.toggle('border-transparent',b!==btn);b.classList.toggle('text-slate-500',b!==btn)});document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));$('view-'+currentTab).classList.remove('hidden')});
+$('closeImage').onclick=()=>$('imageModal').classList.add('hidden');$('imageModal').onclick=e=>{if(e.target===$('imageModal'))$('imageModal').classList.add('hidden')};
+
+document.querySelectorAll('.captureBtn').forEach(btn=>btn.onclick=async()=>{const target=$(btn.dataset.target),old=btn.innerHTML;btn.disabled=true;btn.innerHTML='Capturing...';try{const canvas=await html2canvas(target,{useCORS:true,backgroundColor:'#f8fafc',scale:2});canvas.toBlob(async blob=>{try{if(navigator.clipboard&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);msg('Layout copied to clipboard.',true)}else{const a=document.createElement('a');a.download='lottery-layout.png';a.href=canvas.toDataURL('image/png');a.click()}}catch{const a=document.createElement('a');a.download='lottery-layout.png';a.href=canvas.toDataURL('image/png');a.click()}},'image/png')}catch(e){msg('Screenshot failed: '+e.message,false)}finally{btn.disabled=false;btn.innerHTML=old}});
+
+if(webapp.value) load(); else $('settingsPanel').classList.remove('hidden');
+})();
+</script>
+</body></html>

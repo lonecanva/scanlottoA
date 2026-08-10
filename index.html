@@ -8,6 +8,13 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+  <script async src="https://docs.opencv.org/4.8.0/opencv.js" type="text/javascript"></script>
+  <script type="module">
+    import * as Paddle from "https://cdn.jsdelivr.net/npm/esearch-ocr@5.1.5/dist/esearch-ocr.js";
+    window.Paddle = Paddle;
+    window.dispatchEvent(new Event('paddle-module-ready'));
+  </script>
   <style>
     body { background:#f8fafc; }
     .spinner { border:3px solid rgba(255,255,255,.3); border-radius:50%; border-top-color:currentColor; width:18px; height:18px; animation:spin 1s ease-in-out infinite; }
@@ -30,7 +37,7 @@
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h1 class="text-2xl font-bold text-slate-900 mb-1">⚡ Fast Bulk Lottery Scanner</h1>
-        <p class="text-sm text-slate-500">Hybrid OCR + Barcode: YY-Period-Set-Number-Suffix</p>
+        <p class="text-sm text-slate-500">PaddleOCR + Barcode + Tesseract fallback: YY-Period-Set-Number-Suffix</p>
       </div>
       <div class="flex gap-2">
         <button id="toggle-settings" class="text-sm px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium flex items-center gap-2">⚙ Settings</button>
@@ -48,7 +55,7 @@
           <button id="test-api-btn" class="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700">Test Connection</button>
           <span id="api-status" class="text-xs text-slate-500">Not tested</span>
         </div>
-        <p class="text-[11px] text-blue-700">No Gemini key needed. v4 uses ZXing barcode decode + multi-pass local OCR + image preprocessing. GITHUB_TOKEN stays private in Apps Script.</p>
+        <p class="text-[11px] text-blue-700">No Gemini key needed. v5 uses PaddleOCR as the primary OCR engine, barcode decoding, and Tesseract only as a fallback. The first scan can take longer while OCR models load.</p>
       </div>
     </div>
 
@@ -106,10 +113,12 @@
 
   let tickets = [];
   let backendReady = false;
-  const REQUIRED_BACKEND_VERSION = '4.0.0';
+  const REQUIRED_BACKEND_VERSION = '5.0.0';
   const MAX_FILES = 200;
   const SCAN_CONCURRENCY = 1;
   let ocrWorker = null;
+  let paddleReady = false;
+  let paddleInitPromise = null;
 
   const fileInput = document.getElementById('file-input');
   const dropZone = document.getElementById('drop-zone');
@@ -299,6 +308,78 @@
     return m ? m[1] : '';
   }
 
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function waitForGlobal(name, timeoutMs = 25000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (window[name]) return window[name];
+      await sleep(120);
+    }
+    throw new Error(name + ' did not load');
+  }
+
+  async function waitForOpenCv(timeoutMs = 30000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (window.cv && typeof window.cv.Mat === 'function') return window.cv;
+      if (window.cv && typeof window.cv.then === 'function') {
+        try { window.cv = await window.cv; if (window.cv && typeof window.cv.Mat === 'function') return window.cv; } catch (_) {}
+      }
+      await sleep(150);
+    }
+    throw new Error('OpenCV did not finish loading');
+  }
+
+  async function getPaddleOcr() {
+    if (paddleReady && window.Paddle) return window.Paddle;
+    if (paddleInitPromise) return paddleInitPromise;
+    paddleInitPromise = (async () => {
+      log('Loading PaddleOCR model (first scan only)...', 'action');
+      const Paddle = await waitForGlobal('Paddle', 30000);
+      const cvObj = await waitForOpenCv(30000);
+      const ortObj = await waitForGlobal('ort', 15000);
+      const assetsPath = 'https://cdn.jsdelivr.net/npm/paddleocr-browser/dist/';
+      const dictRes = await fetch(assetsPath + 'ppocr_keys_v1.txt');
+      if (!dictRes.ok) throw new Error('Could not load PaddleOCR dictionary');
+      const dic = await dictRes.text();
+      await Paddle.init({
+        detPath: assetsPath + 'ppocr_det.onnx',
+        recPath: assetsPath + 'ppocr_rec.onnx',
+        dic, ort: ortObj, node: false, cv: cvObj
+      });
+      paddleReady = true;
+      log('PaddleOCR loaded.', 'success');
+      return Paddle;
+    })();
+    try { return await paddleInitPromise; }
+    catch (e) { paddleInitPromise = null; throw e; }
+  }
+
+  function collectOcrStrings(value, out = []) {
+    if (value == null) return out;
+    if (typeof value === 'string') { if (value.trim()) out.push(value.trim()); return out; }
+    if (typeof value === 'number') { out.push(String(value)); return out; }
+    if (Array.isArray(value)) { value.forEach(v => collectOcrStrings(v, out)); return out; }
+    if (typeof value === 'object') {
+      for (const k of ['text','label','value','content']) {
+        if (typeof value[k] === 'string' && value[k].trim()) out.push(value[k].trim());
+      }
+      for (const [k,v] of Object.entries(value)) {
+        if (!['text','label','value','content','box','bbox','points','frame','score','confidence'].includes(k)) collectOcrStrings(v, out);
+      }
+    }
+    return out;
+  }
+
+  async function paddleRecognize(target) {
+    const Paddle = await getPaddleOcr();
+    const input = target instanceof HTMLCanvasElement ? target.toDataURL('image/png') : target;
+    const result = await Paddle.ocr(input);
+    const strings = [...new Set(collectOcrStrings(result).map(s => thaiDigitsToArabic(s)))];
+    return { text: strings.join('\n'), raw: result };
+  }
+
   async function getOcrWorker() {
     if (ocrWorker) return ocrWorker;
     log('Loading local OCR engine...', 'action');
@@ -462,18 +543,40 @@
     const barcode = await decodeBarcodeHybrid(img);
     if (barcode.text) log(`${barcode.source} ${t.fileName}: ${barcode.text}`, 'success');
 
-    const worker = await getOcrWorker();
-    const bottomNormal = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'normal');
-    const bottomLight  = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'binary-light');
-    const bottomDark   = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'binary-dark');
-    const middle       = cropCanvas(img, 0.25, 0.20, 1.00, 0.80, 3, 'binary-light');
+    const fullHi       = cropCanvas(img, 0.00, 0.00, 1.00, 1.00, 3, 'normal');
+    const middleHi     = cropCanvas(img, 0.08, 0.18, 1.00, 0.78, 5, 'normal');
+    const bottomHi     = cropCanvas(img, 0.02, 0.50, 1.00, 1.00, 5, 'normal');
+    const bottomBinary = cropCanvas(img, 0.02, 0.50, 1.00, 1.00, 5, 'binary-light');
 
     const texts = [];
-    if (barcode.text) texts.push({text:barcode.text, source:barcode.source, bonus:5});
-    texts.push({text:await ocrRegion(worker,bottomNormal,6),source:'OCR bottom',bonus:0});
-    texts.push({text:await ocrRegion(worker,bottomLight,7),source:'OCR bottom threshold A',bonus:1});
-    texts.push({text:await ocrRegion(worker,bottomDark,7),source:'OCR bottom threshold B',bonus:1});
-    texts.push({text:await ocrRegion(worker,middle,6),source:'OCR middle',bonus:0});
+    if (barcode.text) texts.push({text:barcode.text, source:barcode.source, bonus:7});
+
+    let paddleWorked = false;
+    try {
+      for (const [label, canvas, bonus] of [
+        ['Paddle full', fullHi, 2],
+        ['Paddle middle', middleHi, 3],
+        ['Paddle bottom', bottomHi, 4],
+        ['Paddle bottom binary', bottomBinary, 3]
+      ]) {
+        const r = await paddleRecognize(canvas);
+        if (r.text.trim()) {
+          paddleWorked = true;
+          texts.push({text:r.text, source:label, bonus});
+          log(`${label} ${t.fileName}: ${r.text.replace(/\s+/g,' ').slice(0,180)}`, 'action');
+        }
+      }
+    } catch (e) {
+      log(`PaddleOCR unavailable (${e.message}); using Tesseract fallback.`, 'error');
+    }
+
+    try {
+      const worker = await getOcrWorker();
+      texts.push({text:await ocrRegion(worker,bottomHi,6),source:'Tesseract bottom',bonus:paddleWorked?0:2});
+      texts.push({text:await ocrRegion(worker,bottomBinary,7),source:'Tesseract threshold',bonus:paddleWorked?0:2});
+    } catch (e) {
+      log('Tesseract fallback failed: ' + e.message, 'error');
+    }
 
     const candidates=[];
     for (const x of texts) {
@@ -481,12 +584,11 @@
     }
     const best=chooseCandidate(candidates);
 
-    // Never invent Period/Set/Suffix. Missing fields stay blank and are highlighted for manual correction.
     const yy = best ? String(best.yy||'69').padStart(2,'0').slice(-2) : '69';
     const period = best ? best.period : '';
     const set = best ? best.set : '';
     const suffix = best ? best.suffix : '';
-    const confidence = best ? Math.min(99, 55 + best.votes*12 + Math.min(20,best.total)) : 0;
+    const confidence = best ? Math.min(99, 58 + best.votes*12 + Math.min(22,best.total)) : 0;
     const source = best ? best.source : 'No reliable machine line found';
     return {
       yy, period, set, number, suffix,

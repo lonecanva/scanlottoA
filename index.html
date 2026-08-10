@@ -7,6 +7,7 @@
   <title>Fast Bulk Lottery Scanner</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
   <style>
     body { background:#f8fafc; }
     .spinner { border:3px solid rgba(255,255,255,.3); border-radius:50%; border-top-color:currentColor; width:18px; height:18px; animation:spin 1s ease-in-out infinite; }
@@ -29,7 +30,7 @@
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h1 class="text-2xl font-bold text-slate-900 mb-1">⚡ Fast Bulk Lottery Scanner</h1>
-        <p class="text-sm text-slate-500">No API key OCR: YY-Period-Set-Number-Suffix</p>
+        <p class="text-sm text-slate-500">Hybrid OCR + Barcode: YY-Period-Set-Number-Suffix</p>
       </div>
       <div class="flex gap-2">
         <button id="toggle-settings" class="text-sm px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium flex items-center gap-2">⚙ Settings</button>
@@ -47,7 +48,7 @@
           <button id="test-api-btn" class="px-3 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700">Test Connection</button>
           <span id="api-status" class="text-xs text-slate-500">Not tested</span>
         </div>
-        <p class="text-[11px] text-blue-700">No Gemini key is needed. OCR runs in your browser. Only GITHUB_TOKEN stays private in Apps Script Script Properties.</p>
+        <p class="text-[11px] text-blue-700">No Gemini key needed. v4 uses ZXing barcode decode + multi-pass local OCR + image preprocessing. GITHUB_TOKEN stays private in Apps Script.</p>
       </div>
     </div>
 
@@ -105,7 +106,7 @@
 
   let tickets = [];
   let backendReady = false;
-  const REQUIRED_BACKEND_VERSION = '3.1.0';
+  const REQUIRED_BACKEND_VERSION = '4.0.0';
   const MAX_FILES = 200;
   const SCAN_CONCURRENCY = 1;
   let ocrWorker = null;
@@ -262,10 +263,10 @@
       return `<div class="p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
         <div class="flex justify-between items-start gap-2 mb-2"><div class="font-mono font-bold text-slate-900 text-xl tracking-widest">${escapeHtml(d.number)}</div><div class="px-2 py-1 rounded text-[9px] font-black border ${badgeClass} uppercase whitespace-nowrap">${label}</div></div>
         <div class="grid grid-cols-5 gap-1 mb-2 text-center">
-          ${[['yy','YY'],['period','Period'],['set','Set'],['number','Number'],['suffix','Suffix']].map(([k,l]) => `<label class="text-[9px] text-slate-500">${l}<input data-ticket="${t.id}" data-field="${k}" value="${escapeHtml(d[k] || '')}" class="mt-1 w-full border rounded px-1 py-1 text-[10px] font-mono text-center bg-slate-50"></label>`).join('')}
+          ${[['yy','YY'],['period','Period'],['set','Set'],['number','Number'],['suffix','Suffix']].map(([k,l]) => `<label class="text-[9px] text-slate-500">${l}<input data-ticket="${t.id}" data-field="${k}" value="${escapeHtml(d[k] || '')}" class="mt-1 w-full border rounded px-1 py-1 text-[10px] font-mono text-center ${d[k] ? 'bg-slate-50 border-slate-200' : 'bg-rose-50 border-rose-400'}"></label>`).join('')}
         </div>
         <div class="text-[10px] text-slate-500 font-bold font-mono break-all">${escapeHtml(d.formattedString)}</div>
-        <div class="text-[9px] text-amber-600 mt-1">OCR is free/local. Check Period, Set and Suffix before Sync.</div>
+        <div class="text-[9px] mt-1 ${d.period && d.set && d.suffix ? 'text-emerald-600' : 'text-rose-600 font-bold'}">${d.period && d.set && d.suffix ? `Hybrid read • ${escapeHtml(d.source||'local')} • confidence ${escapeHtml(d.confidence||0)}%` : '⚠ Period / Set / Suffix not reliable. Please correct the red/missing fields before Sync.'}</div>
         ${t.imageUrl ? `<a class="text-[10px] text-blue-600 underline" target="_blank" href="${t.imageUrl}">Open GitHub image</a>`:''}
       </div>`;
     }).join('');
@@ -300,7 +301,7 @@
 
   async function getOcrWorker() {
     if (ocrWorker) return ocrWorker;
-    log('Loading free OCR engine for the first scan...', 'action');
+    log('Loading local OCR engine...', 'action');
     ocrWorker = await Tesseract.createWorker('eng', 1, {
       logger: m => {
         if (m.status === 'recognizing text' && typeof m.progress === 'number') {
@@ -315,107 +316,185 @@
     return ocrWorker;
   }
 
-  async function decodeBarcode(dataUrl) {
+  async function imageFromDataUrl(dataUrl) {
+    const img = new Image();
+    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl; });
+    return img;
+  }
+
+  function cropCanvas(img, x0, y0, x1, y1, scale = 3, mode = 'normal') {
+    const sx = Math.max(0, Math.floor(img.naturalWidth * x0));
+    const sy = Math.max(0, Math.floor(img.naturalHeight * y0));
+    const sw = Math.max(1, Math.floor(img.naturalWidth * (x1 - x0)));
+    const sh = Math.max(1, Math.floor(img.naturalHeight * (y1 - y0)));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, sw * scale);
+    canvas.height = Math.max(1, sh * scale);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    if (mode !== 'normal') preprocessCanvas(canvas, mode);
+    return canvas;
+  }
+
+  function preprocessCanvas(canvas, mode) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const im = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = im.data;
+    for (let i = 0; i < d.length; i += 4) {
+      let g = Math.round(0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2]);
+      // Boost contrast before thresholding. Ticket backgrounds are colorful, text is dark.
+      g = Math.max(0, Math.min(255, (g - 128) * 1.65 + 128));
+      if (mode === 'binary-light') g = g < 185 ? 0 : 255;
+      if (mode === 'binary-dark') g = g < 145 ? 0 : 255;
+      d[i] = d[i+1] = d[i+2] = g;
+    }
+    ctx.putImageData(im, 0, 0);
+  }
+
+  async function tryNativeBarcode(target) {
     if (!('BarcodeDetector' in window)) return '';
     try {
-      const img = new Image();
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl; });
       const supported = await BarcodeDetector.getSupportedFormats();
       const wanted = ['code_128','code_39','codabar','ean_13','ean_8','itf','qr_code','upc_a','upc_e'].filter(f => supported.includes(f));
       if (!wanted.length) return '';
       const detector = new BarcodeDetector({formats:wanted});
-      let found = await detector.detect(img);
-      if (found && found.length) return found.map(x => x.rawValue || '').filter(Boolean).join(' ');
-
-      // Retry the bottom 40% where the ticket barcode normally sits.
-      const canvas = document.createElement('canvas');
-      const y = Math.floor(img.naturalHeight * 0.58);
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight - y;
-      canvas.getContext('2d').drawImage(img, 0, y, img.naturalWidth, canvas.height, 0, 0, canvas.width, canvas.height);
-      found = await detector.detect(canvas);
+      const found = await detector.detect(target);
       return found && found.length ? found.map(x => x.rawValue || '').filter(Boolean).join(' ') : '';
     } catch (_) { return ''; }
   }
 
-  function parseTicketData(fileName, ocrText, barcodeText) {
-    const text = thaiDigitsToArabic(ocrText || '');
-    const barcodeDigits = digitsOnly(barcodeText || '');
-    let number = numberFromFilename(fileName);
+  async function tryZxingCanvas(canvas) {
+    try {
+      if (!window.ZXingBrowser || !ZXingBrowser.BrowserMultiFormatReader) return '';
+      const reader = new ZXingBrowser.BrowserMultiFormatReader();
+      const result = await reader.decodeFromCanvas(canvas);
+      if (!result) return '';
+      if (typeof result.getText === 'function') return result.getText() || '';
+      return result.text || '';
+    } catch (_) { return ''; }
+  }
 
-    if (!number) {
-      const sixes = (text.match(/\b\d{6}\b/g) || []);
-      number = sixes[0] || '';
+  async function decodeBarcodeHybrid(img) {
+    const attempts = [
+      cropCanvas(img, 0.22, 0.64, 1.00, 0.98, 4, 'normal'),
+      cropCanvas(img, 0.15, 0.55, 1.00, 1.00, 4, 'binary-light'),
+      cropCanvas(img, 0.15, 0.55, 1.00, 1.00, 4, 'binary-dark'),
+      cropCanvas(img, 0.00, 0.00, 1.00, 1.00, 2, 'normal')
+    ];
+    for (const c of attempts) {
+      const native = await tryNativeBarcode(c);
+      if (native) return {text:native, source:'BarcodeDetector'};
+      const zx = await tryZxingCanvas(c);
+      if (zx) return {text:zx, source:'ZXing'};
     }
-    if (!number) throw new Error('Could not find 6-digit number. Rename image like 745066.jpg or edit after scan.');
+    return {text:'', source:''};
+  }
 
-    let yy = '69', period = '', set = '', suffix = '';
+  function candidateFromText(raw, number) {
+    const text = thaiDigitsToArabic(raw || '');
+    const flat = text.replace(/[^0-9]/g, '');
+    const out = [];
 
-    // Best case: machine-readable barcode contains the 6-digit ticket number.
-    if (barcodeDigits && barcodeDigits.includes(number)) {
-      const i = barcodeDigits.indexOf(number);
-      const before = barcodeDigits.slice(0, i);
-      const after = barcodeDigits.slice(i + 6);
-      suffix = after.slice(0, 4) || after.slice(-4);
-
-      // Common layouts: YYYYPPSS + NUMBER + SUFFIX, or YYPPSS + NUMBER + SUFFIX.
-      const p8 = before.slice(-8);
-      const p6 = before.slice(-6);
-      if (/^25\d{6}$/.test(p8)) {
-        yy = p8.slice(2,4); period = p8.slice(4,6); set = p8.slice(6,8);
-      } else if (/^\d{6}$/.test(p6)) {
-        yy = p6.slice(0,2); period = p6.slice(2,4); set = p6.slice(4,6);
+    // Strongest signal: a machine-readable run containing the known six-digit ticket number.
+    let pos = 0;
+    while (number && (pos = flat.indexOf(number, pos)) !== -1) {
+      const before = flat.slice(Math.max(0, pos - 12), pos);
+      const after = flat.slice(pos + 6, pos + 16);
+      for (const bLen of [8, 6, 4]) {
+        if (before.length < bLen) continue;
+        const b = before.slice(-bLen);
+        let yy='69', period='', set='';
+        if (bLen === 8 && /^25\d{6}$/.test(b)) { yy=b.slice(2,4); period=b.slice(4,6); set=b.slice(6,8); }
+        else if (bLen === 6) { yy=b.slice(0,2); period=b.slice(2,4); set=b.slice(4,6); }
+        else if (bLen === 4) { period=b.slice(0,2); set=b.slice(2,4); }
+        if (period && set && after.length >= 4) out.push({yy,period,set,suffix:after.slice(0,4),score:bLen===8?10:bLen===6?9:8});
       }
+      pos += 6;
     }
 
-    const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-    const yearMatch = text.match(/\b(25\d{2})\b/);
-    if (yearMatch) yy = yearMatch[1].slice(-2);
+    // Human-readable barcode lines often have separators/spaces.
+    const esc = number.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const patterns = [
+      new RegExp('(25\\d{2})\\D{0,5}(\\d{2})\\D{0,5}(\\d{2})\\D{0,8}'+esc+'\\D{0,8}(\\d{4})','g'),
+      new RegExp('(\\d{2})\\D{0,5}(\\d{2})\\D{0,5}(\\d{2})\\D{0,8}'+esc+'\\D{0,8}(\\d{4})','g'),
+      new RegExp('(\\d{2})\\D{0,5}(\\d{2})\\D{0,8}'+esc+'\\D{0,8}(\\d{4})','g')
+    ];
+    let m;
+    while ((m=patterns[0].exec(text))) out.push({yy:m[1].slice(-2),period:m[2],set:m[3],suffix:m[4],score:9});
+    while ((m=patterns[1].exec(text))) out.push({yy:m[1],period:m[2],set:m[3],suffix:m[4],score:8});
+    while ((m=patterns[2].exec(text))) out.push({yy:'69',period:m[1],set:m[2],suffix:m[3],score:7});
+    return out;
+  }
 
-    // Draw day/period: look on the same OCR line as Buddhist year, e.g. 16 ... 2569.
-    if (!period && yearMatch) {
-      const line = lines.find(l => l.includes(yearMatch[1]));
-      if (line) {
-        const nums = line.match(/\b\d{1,4}\b/g) || [];
-        const day = nums.map(Number).find(n => n >= 1 && n <= 31);
-        if (day) period = String(day).padStart(2,'0');
-      }
+  function chooseCandidate(candidates) {
+    if (!candidates.length) return null;
+    const map = new Map();
+    for (const c of candidates) {
+      const period=String(c.period||'').padStart(2,'0').slice(-2);
+      const set=String(c.set||'').padStart(2,'0').slice(-2);
+      const suffix=String(c.suffix||'').padStart(4,'0').slice(-4);
+      if (!/^\d{2}$/.test(period) || !/^\d{2}$/.test(set) || !/^\d{4}$/.test(suffix)) continue;
+      if (period==='00' || set==='00' || suffix==='0000') continue;
+      const key=`${period}-${set}-${suffix}`;
+      const cur=map.get(key)||{...c,period,set,suffix,votes:0,total:0};
+      cur.votes += 1; cur.total += Number(c.score||1); map.set(key,cur);
     }
+    return [...map.values()].sort((a,b)=>(b.votes-a.votes)||(b.total-a.total))[0] || null;
+  }
 
-    // Find suffix from the longest digit run if barcode detector did not get it.
-    if (!suffix) {
-      const runs = (text.match(/\d{8,}/g) || []).sort((a,b) => b.length - a.length);
-      const runWithNumber = runs.find(r => r.includes(number));
-      const run = runWithNumber || runs[0] || '';
-      if (run) {
-        if (run.includes(number)) {
-          const i = run.indexOf(number);
-          suffix = run.slice(i + 6, i + 10) || run.slice(-4);
-        } else suffix = run.slice(-4);
-      }
-    }
-
-    // Set number fallback: collect 2-digit values and remove obvious date/year/number pieces.
-    if (!set) {
-      const candidates = (text.match(/\b\d{2}\b/g) || []).filter(v => v !== period && v !== yy && Number(v) >= 1 && Number(v) <= 99);
-      set = candidates.length ? candidates[candidates.length - 1] : '';
-    }
-
-    period = (period || '00').padStart(2,'0').slice(-2);
-    set = (set || '00').padStart(2,'0').slice(-2);
-    suffix = (suffix || '0000').padStart(4,'0').slice(-4);
-
-    return { yy, period, set, number, suffix, formattedString:`${yy}-${period}-${set}-${number}-${suffix}`, barcodeText, ocrText:text };
+  async function ocrRegion(worker, canvas, psm) {
+    await worker.setParameters({
+      tessedit_pageseg_mode: String(psm),
+      tessedit_char_whitelist: '0123456789- ',
+      preserve_interword_spaces: '1'
+    });
+    const ret = await worker.recognize(canvas);
+    return ret && ret.data ? ret.data.text || '' : '';
   }
 
   async function localExtractTicket(t) {
-    const barcodeText = await decodeBarcode(t.previewUrl);
-    if (barcodeText) log(`Barcode ${t.fileName}: ${barcodeText}`, 'success');
+    const number = numberFromFilename(t.fileName);
+    if (!number) throw new Error('Rename image with the 6-digit ticket number, for example 745066.jpg');
+
+    const img = await imageFromDataUrl(t.previewUrl);
+    const barcode = await decodeBarcodeHybrid(img);
+    if (barcode.text) log(`${barcode.source} ${t.fileName}: ${barcode.text}`, 'success');
 
     const worker = await getOcrWorker();
-    const ret = await worker.recognize(t.previewUrl, { rotateAuto: true });
-    const ocrText = ret && ret.data ? ret.data.text : '';
-    return parseTicketData(t.fileName, ocrText, barcodeText);
+    const bottomNormal = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'normal');
+    const bottomLight  = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'binary-light');
+    const bottomDark   = cropCanvas(img, 0.05, 0.55, 1.00, 1.00, 4, 'binary-dark');
+    const middle       = cropCanvas(img, 0.25, 0.20, 1.00, 0.80, 3, 'binary-light');
+
+    const texts = [];
+    if (barcode.text) texts.push({text:barcode.text, source:barcode.source, bonus:5});
+    texts.push({text:await ocrRegion(worker,bottomNormal,6),source:'OCR bottom',bonus:0});
+    texts.push({text:await ocrRegion(worker,bottomLight,7),source:'OCR bottom threshold A',bonus:1});
+    texts.push({text:await ocrRegion(worker,bottomDark,7),source:'OCR bottom threshold B',bonus:1});
+    texts.push({text:await ocrRegion(worker,middle,6),source:'OCR middle',bonus:0});
+
+    const candidates=[];
+    for (const x of texts) {
+      for (const c of candidateFromText(x.text, number)) candidates.push({...c,score:(c.score||0)+x.bonus,source:x.source});
+    }
+    const best=chooseCandidate(candidates);
+
+    // Never invent Period/Set/Suffix. Missing fields stay blank and are highlighted for manual correction.
+    const yy = best ? String(best.yy||'69').padStart(2,'0').slice(-2) : '69';
+    const period = best ? best.period : '';
+    const set = best ? best.set : '';
+    const suffix = best ? best.suffix : '';
+    const confidence = best ? Math.min(99, 55 + best.votes*12 + Math.min(20,best.total)) : 0;
+    const source = best ? best.source : 'No reliable machine line found';
+    return {
+      yy, period, set, number, suffix,
+      formattedString:`${yy}-${period||'??'}-${set||'??'}-${number}-${suffix||'????'}`,
+      barcodeText:barcode.text,
+      confidence, source,
+      debugText:texts.map(x=>`[${x.source}] ${x.text}`).join('\n')
+    };
   }
 
   scanAllBtn.addEventListener('click', async () => {
@@ -450,6 +529,12 @@
 
     // One-by-one GitHub writes avoid commit conflicts.
     for (const t of pending) {
+      if (!t.extractedData.period || !t.extractedData.set || !t.extractedData.suffix) {
+        t.syncStatus = 'error';
+        log(`Not synced ${t.extractedData.number}: Period / Set / Suffix is missing. Correct the fields first.`, 'error');
+        updateUI();
+        continue;
+      }
       t.syncStatus = 'syncing'; updateUI();
       try {
         const res = await postApi({
@@ -485,9 +570,9 @@
     const field = el.dataset.field;
     let value = digitsOnly(el.value);
     const lengths = {yy:2, period:2, set:2, number:6, suffix:4};
-    value = value.padStart(lengths[field], '0').slice(-lengths[field]);
+    if (value) value = value.padStart(lengths[field], '0').slice(-lengths[field]);
     t.extractedData[field] = value;
-    t.extractedData.formattedString = `${t.extractedData.yy}-${t.extractedData.period}-${t.extractedData.set}-${t.extractedData.number}-${t.extractedData.suffix}`;
+    t.extractedData.formattedString = `${t.extractedData.yy||'69'}-${t.extractedData.period||'??'}-${t.extractedData.set||'??'}-${t.extractedData.number}-${t.extractedData.suffix||'????'}`;
     updateUI();
   });
 

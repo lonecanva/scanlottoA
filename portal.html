@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Thai Lottery Management Portal v7.2.4</title>
+<title>Thai Lottery Management Portal v7.2.5</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
@@ -243,7 +243,33 @@ async function load(){const btn=$('refreshBtn'),old=btn.innerHTML;btn.disabled=t
 
 function toLocalDT(v){const d=v?new Date(v):new Date();if(isNaN(d))return '';const off=d.getTimezoneOffset()*60000;return new Date(d-off).toISOString().slice(0,16)}
 function toDateInput(v){if(!v)return '';const d=new Date(v);if(isNaN(d))return '';return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
-function openEdit(row){const r=records.find(x=>x.rowNumber===row);if(!r)return;$('editRow').value=row;$('editTimestamp').value=toLocalDT(r.timestamp);$('editDrawDate').value=toDateInput(r.drawDate);$('editCustomer').value=r.customerName||'';$('editPlatform').value=r.socialPlatform||'';$('editContact').value=r.socialContact||'';$('editNumber').value=r.lotteryNumber||'';$('editPayment').value=r.payment||'မရှင်းသေး';$('editPhoto').value='';$('editModal').classList.remove('hidden')}
+
+function getNextDrawDateFormatted(){
+  const today=new Date();
+  today.setHours(0,0,0,0);
+
+  function datesForMonth(year,month){
+    // month: 0=Jan ... 11=Dec
+    if(month===0) return [new Date(year,month,2),new Date(year,month,17)];
+    if(month===4) return [new Date(year,month,2),new Date(year,month,16)];
+    return [new Date(year,month,1),new Date(year,month,16)];
+  }
+
+  let year=today.getFullYear();
+  let month=today.getMonth();
+  for(let i=0;i<24;i++){
+    const candidates=datesForMonth(year,month);
+    const hit=candidates.find(d=>d>=today);
+    if(hit){
+      return `${hit.getFullYear()}-${String(hit.getMonth()+1).padStart(2,'0')}-${String(hit.getDate()).padStart(2,'0')}`;
+    }
+    month++;
+    if(month>11){ month=0; year++; }
+  }
+  return '';
+}
+
+function openEdit(row){const r=records.find(x=>x.rowNumber===row);if(!r)return;$('editRow').value=row;$('editTimestamp').value=toLocalDT(r.timestamp);$('editDrawDate').value=toDateInput(r.drawDate)||getNextDrawDateFormatted();$('editCustomer').value=r.customerName||'';$('editPlatform').value=r.socialPlatform||'';$('editContact').value=r.socialContact||'';$('editNumber').value=r.lotteryNumber||'';$('editPayment').value=r.payment||'မရှင်းသေး';$('editPhoto').value='';$('editModal').classList.remove('hidden')}
 function closeEdit(){$('editModal').classList.add('hidden')}
 $('closeEdit').onclick=$('cancelEdit').onclick=closeEdit;
 
